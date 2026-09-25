@@ -12,7 +12,15 @@
 # Quarantine all scripts and research notes until each file is reviewed.
 # Comments alone do not stop Git from staging files.
 /tools/*
+!/tools/prepare_qa_text.py
+!/tools/build_student_mapping.py
+!/tools/error_propagation.py
 /notes/*
+/reproducibility/
+/papers/
+/roadshow/
+/Txxx_BloomUp/
+/tmp/
 
 # Manual annotation dictionaries are research data even though stored in Python.
 /tools/apply_annotations.py
