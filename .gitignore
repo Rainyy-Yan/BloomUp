@@ -1,0 +1,44 @@
+# Source files supplied outside the repository
+*.xlsx
+*.xls
+*.docx
+*.doc
+
+# All local research data, including future exports and human labels.
+# Keep only a placeholder so a fresh clone has the data directory.
+/data/*
+!/data/.gitkeep
+
+# Quarantine all scripts and research notes until each file is reviewed.
+# Comments alone do not stop Git from staging files.
+/tools/*
+/notes/*
+
+# Manual annotation dictionaries are research data even though stored in Python.
+/tools/apply_annotations.py
+/tools/apply_annotations_v2.py
+/tools/apply_annotations_turn.py
+
+# Notes containing real question excerpts or record-level labels.
+/notes/annotation_prompt_design.md
+/notes/api_dependency.md
+/notes/annotation_methodology_update.md
+/notes/annotation_methodology_v2.md
+/notes/turn_level_methodology.md
+
+# Local environments, secrets, and generated files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+.env
+.env.local
+*.gpg
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
