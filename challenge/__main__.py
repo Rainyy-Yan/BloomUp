@@ -27,6 +27,7 @@ def parser():
         'rubric-register':['file'], 'review-export':['dataset','rubric','pool','reviewer'],
         'review-import':['task','file'], 'adjudicate':['review_a','review_b','resolutions','actor'],
         'prediction-export':['dataset','rubric','model','prompt'], 'prediction-import':['task','file'],
+        'ai-reference-import':['task','file','protocol'], 'ai-reference-compare':['predictions','reference'],
         'prediction-plan':['task','config'], 'prediction-run':['plan'],
         'student-export':['metrics'],
         'allocation-plan':['config'], 'allocation-demo':[],
@@ -86,6 +87,10 @@ def dispatch(store,a):
     if command=='adjudicate': return adjudicate(store,a.review_a,a.review_b,read_json(a.resolutions),a.actor)
     if command=='prediction-export': return export_request(store,a.dataset,a.rubric,read_json(a.model),a.prompt,a.pool)
     if command=='prediction-import': return import_predictions(store,a.task,a.file)
+    if command in ('ai-reference-import','ai-reference-compare'):
+        from .annotation.ai_reference import import_ai_reference, compare_ai_reference
+        if command=='ai-reference-import': return import_ai_reference(store,a.task,a.file,a.protocol)
+        return compare_ai_reference(store,a.predictions,a.reference)
     if command=='student-export':
         from .student_export import export_students
         return export_students(store,a.metrics,a.enable_student_output,a.roster)
