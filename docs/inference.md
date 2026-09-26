@@ -74,3 +74,19 @@ python -m challenge --root local_state probe-report --predictions <predictions-i
 ```
 
 模型配置使用既有 `{name, revision, parameters}` 合同。未启用网络时不会产生费用；重跑使用原计划。每对仅检验非缺失等级是否不变：不变记 PASS，改变记 FAIL，任一缺失记 NA。即便两次都错也可能不变，因此不能将其当准确率或人审金标准，更不能将四对探针写成所有红队攻击通过。v2 仍为开发候选，探针固定其哈希不等于完成独立人审后的规则冻结。
+
+
+## 保留部分结果与离线快照
+
+`prediction-run --continue-on-invalid` 仅跳过已取得可核验 usage、且当前重试策略不再重试的合同失败。默认仍在首个失败停止；与 `--retry-invalid` 联用时先执行计划内有限重试。成功缓存保持复用，失败不会填成认知 NA。全部条目处理完但有合同失败时返回 `completed_with_failures` 和独立的 `partial_predictions`，CLI 退出码为 2，不能伪装为完整 predictions。
+
+传输状态未知、usage 不可核验和预算不足仍立即停止。前两者仍冻结同一预算的新请求；这个选项不能绕过费用核对。已知失败重试仍可能收费。
+
+```text
+python -m challenge --root PRIVATE_STORE prediction-snapshot --plan PLAN_ID
+python -m challenge --root PRIVATE_STORE ai-reference-compare --predictions SNAPSHOT_ID --reference AI_REFERENCE_ID
+```
+
+`prediction-snapshot` 无需密钥或网络，验证计划依赖、账本校验和与全部缓存哈希后重验成功预测合同。它生成 `prediction_snapshot`，分别记录 validated、validation_failed、submitted_unknown、usage_unverified、not_attempted。快照不改账本、不解除未决费用、不重发请求。快照命令成功只表示离线导出成功，完整性须看 completion 和 status_counts。
+
+AI 对比支持完整预测、部分预测与快照。失败、未知和未调用计数与四种标签缺失组合分开；只有有效模型输出才进入缺失分母，共同非空才进入等级一致率。正式质量门槛仍不接收 AI 参考或部分结果。

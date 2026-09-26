@@ -13,7 +13,7 @@ from challenge.annotation.predictions import export_request
 from challenge.annotation.reviews import register_rubric
 from challenge.contracts import ContractError, read_json
 from challenge.demo import synthetic_dataset
-from challenge.inference import create_plan, run_plan
+from challenge.inference import create_plan, run_plan, snapshot_plan
 from challenge.providers import decode_prediction, responses_payload, send, _NoRedirect
 from challenge.storage import ArtifactStore
 
@@ -138,6 +138,102 @@ class InferenceTests(unittest.TestCase):
         self.assertEqual(first['status'], 'submitted_unknown')
         self.assertEqual(second['status'], 'budget_uncertain')
         self.assertNotIn('private-key-and-text', (self.store.root/'inference/ledger.json').read_text())
+
+    def test_continue_invalid_keeps_partial_results_and_resumes_without_new_calls(self):
+        plan = self.plan()
+        def bad_first(body, cfg):
+            raw = response(body)
+            if json.loads(body['input'][1]['content'])['turn_id'] == 'row-000001':
+                raw['output'][0]['content'][0]['text'] = '{}'
+            return raw
+        with patch('challenge.inference.send', side_effect=bad_first) as sender:
+            first = run_plan(self.store, plan, execute=True, retry_invalid=True, continue_on_invalid=True)
+            second = run_plan(self.store, plan, execute=True, retry_invalid=True, continue_on_invalid=True)
+        self.assertEqual(sender.call_count, 13)
+        self.assertEqual(first['status'], 'completed_with_failures')
+        self.assertEqual(first['partial_predictions'], second['partial_predictions'])
+        self.assertEqual(first['estimated_spend_cny'], second['estimated_spend_cny'])
+        partial = self.store.get(first['partial_predictions'], 'partial_predictions')['payload']
+        self.assertEqual(len(partial['rows']), 11)
+        self.assertEqual(len(partial['failed_turn_ids']), 1)
+        self.assertFalse((self.store.root/'artifacts/predictions').exists())
+        self.store.verify_tree(first['run_artifact'])
+
+    def test_continue_invalid_still_stops_on_unknown_delivery_or_usage(self):
+        for missing_usage in (False, True):
+            with self.subTest(missing_usage=missing_usage):
+                plan = self.plan(budget_id='continue-'+str(missing_usage))
+                def unknown(body, cfg):
+                    if not missing_usage: raise TimeoutError('uncertain delivery')
+                    raw = response(body)
+                    raw.pop('usage')
+                    return raw
+                with patch('challenge.inference.send', side_effect=unknown) as sender:
+                    result = run_plan(self.store, plan, execute=True, continue_on_invalid=True)
+                self.assertEqual(sender.call_count, 1)
+                self.assertIn(result['status'], ('submitted_unknown', 'usage_unverified'))
+                self.assertNotIn('partial_predictions', result)
+
+    def test_continue_invalid_does_not_bypass_budget(self):
+        plan = self.plan(budget_cny='0.000001')
+        with patch('challenge.inference.send') as sender:
+            result = run_plan(self.store, plan, execute=True, continue_on_invalid=True)
+        sender.assert_not_called()
+        self.assertEqual(result['status'], 'budget_exhausted')
+
+    def test_all_invalid_results_do_not_produce_a_successful_prediction_batch(self):
+        plan = self.plan(max_attempts=1)
+        def invalid(body, cfg):
+            raw = response(body)
+            raw['output'][0]['content'][0]['text'] = '{}'
+            return raw
+        with patch('challenge.inference.send', side_effect=invalid) as sender:
+            result = run_plan(self.store, plan, execute=True, continue_on_invalid=True)
+        self.assertEqual(sender.call_count, 12)
+        partial = self.store.get(result['partial_predictions'])['payload']
+        self.assertEqual(partial['rows'], [])
+        self.assertEqual(len(partial['failed_turn_ids']), 12)
+        self.assertNotIn('predictions', result)
+
+    def test_cli_reports_partial_completion_with_nonzero_exit(self):
+        plan = self.plan(max_attempts=1)
+        def invalid(body, cfg):
+            raw = response(body)
+            raw['output'][0]['content'][0]['text'] = '{}'
+            return raw
+        output = io.StringIO()
+        with patch('challenge.inference.send', side_effect=invalid), contextlib.redirect_stdout(output):
+            code = main(['--root',str(self.store.root),'prediction-run','--plan',plan,
+                         '--execute','--continue-on-invalid'])
+        self.assertEqual(code, 2)
+        receipt = json.loads(output.getvalue())
+        self.assertEqual(receipt['result']['status'], 'completed_with_failures')
+
+    def test_offline_snapshot_distinguishes_unknown_from_unattempted(self):
+        plan = self.plan()
+        calls = [0]
+        def interrupted(body, cfg):
+            calls[0] += 1
+            if calls[0] == 2: raise TimeoutError('uncertain')
+            return response(body)
+        with patch('challenge.inference.send', side_effect=interrupted):
+            result = run_plan(self.store, plan, execute=True)
+        ledger = (self.store.root/'inference/ledger.json').read_bytes()
+        with patch('challenge.inference.send') as sender:
+            artifact = snapshot_plan(self.store, plan)
+        sender.assert_not_called()
+        self.assertEqual(ledger, (self.store.root/'inference/ledger.json').read_bytes())
+        snap = self.store.get(artifact, 'prediction_snapshot')['payload']
+        self.assertEqual(len(snap['rows']), 1)
+        self.assertEqual(snap['status_counts'], dict(validated=1,submitted_unknown=1,not_attempted=10))
+        self.assertEqual(snap['estimated_spend_cny'], result['estimated_spend_cny'])
+
+    def test_snapshot_refuses_tampered_cache(self):
+        plan = self.plan()
+        with patch('challenge.inference.send', side_effect=lambda body,cfg: response(body)):
+            run_plan(self.store, plan, execute=True)
+        next((self.store.root/'inference').rglob('response-*.json')).write_text('{}', encoding='utf-8')
+        with self.assertRaisesRegex(ContractError, 'CACHE_HASH_MISMATCH'): snapshot_plan(self.store, plan)
 
     def test_interruption_after_dispatch_reserves_cost_and_blocks_resume(self):
         plan = self.plan()

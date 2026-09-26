@@ -100,3 +100,39 @@ class AIReferenceTests(unittest.TestCase):
         self.assertIsNone(report['six_level']['agreement_rate'])
         self.assertIsNone(report['three_tier']['agreement_rate'])
         self.assertEqual(report['missingness']['both_na'], len(self.rows))
+
+    def test_failed_predictions_are_not_counted_as_na(self):
+        reference = self.reference()
+        task = self.store.get(self.task)['payload']
+        partial = self.store.put('partial_predictions', dict(
+            task=self.task, dataset=task['dataset'], rubric=task['rubric'], rows=self.rows[1:],
+            failed_turn_ids=[self.rows[0]['turn_id']]), [self.task])
+        report = self.store.get(compare_ai_reference(self.store, partial, reference))['payload']
+        self.assertEqual(report['failed_predictions'], 1)
+        self.assertEqual(report['paired_n'], len(self.rows)-1)
+        self.assertEqual(report['missingness']['both_na'], 0)
+        self.assertEqual(report['missingness']['reference_label_prediction_na'], 0)
+        self.assertFalse(report['quality_gate_passed'])
+
+    def test_partial_prediction_ids_must_exhaust_task_without_overlap(self):
+        reference = self.reference()
+        task = self.store.get(self.task)['payload']
+        for failed in ([], [self.rows[1]['turn_id']]):
+            partial = self.store.put('partial_predictions', dict(
+                task=self.task,dataset=task['dataset'],rubric=task['rubric'],rows=self.rows[1:],
+                failed_turn_ids=failed), [self.task])
+            with self.assertRaisesRegex(ContractError, 'AI_REFERENCE_ID_SET_MISMATCH'):
+                compare_ai_reference(self.store, partial, reference)
+
+    def test_unknown_and_unattempted_snapshot_rows_are_separate(self):
+        reference = self.reference()
+        task = self.store.get(self.task)['payload']
+        snapshot = self.store.put('prediction_snapshot',dict(
+            task=self.task,dataset=task['dataset'],rubric=task['rubric'],rows=self.rows[2:],
+            unavailable=[dict(turn_id=self.rows[0]['turn_id'],status='submitted_unknown'),
+                         dict(turn_id=self.rows[1]['turn_id'],status='not_attempted')]),[self.task])
+        report = self.store.get(compare_ai_reference(self.store,snapshot,reference))['payload']
+        self.assertEqual(report['failed_predictions'],0)
+        self.assertEqual(report['unknown_predictions'],1)
+        self.assertEqual(report['unattempted_predictions'],1)
+        self.assertEqual(report['paired_n'],len(self.rows)-2)
