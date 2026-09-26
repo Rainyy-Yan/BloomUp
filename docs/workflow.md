@@ -96,4 +96,8 @@ python -m challenge verify --artifact REPORT_ID
 
 artifacts为权威不可变产物，workspaces为可编辑/导出文件。新导出使用新目录，不覆盖人审；同一内容复用ID，verify递归核对依赖。遇WRITER_BUSY先确认锁内PID已退出且无写者后人工清理，程序不破锁。进程硬中断可留下running回执，不能当完成。源码、配置或规则变化产生新版本。
 
-analysis-causal未提供通过审查的独立面板时返回CAUSAL_NOT_IDENTIFIED。B模块现在有独立的面板导入、审查、分层DR-DID和报告入口，见[B模块操作说明](causal-b.md)。现有日志没有自动获得处理/对照或独立学习结果；当前没有真实比赛因果结果、网络模型适配器或自动旧标签迁移，合成演示不能替代这些工作。
+analysis-causal未提供通过审查的独立面板时返回CAUSAL_NOT_IDENTIFIED。B模块现在有独立的面板导入、审查、分层DR-DID和报告入口，见[B模块操作说明](causal-b.md)。现有日志没有自动获得处理/对照或独立学习结果；当前没有真实比赛因果结果或自动旧标签迁移。网络模型适配器已提供显式授权和预算控制，见[推理说明](inference.md)，合成演示不能替代真实研究。
+
+## AI 参考复核入口
+
+2026-09-27 新增 `ai-reference-import` 与 `ai-reference-compare`，用于明确标识的 AI 开发复核。输入合同、命令和限制见 [AI 复核协议](ai-review-protocol.md)，本轮实测见 [回测记录](ai-review-results.md)。此入口不写入人审表，不替代 `gold` 或质量闸门。

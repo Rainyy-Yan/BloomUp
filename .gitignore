@@ -19,7 +19,8 @@
 !/tools/label_noise.py
 /notes/*
 /reproducibility/
-/papers/
+/papers/*
+!/papers/research-draft.md
 /roadshow/
 /Txxx_BloomUp/
 /tmp/
@@ -101,3 +102,5 @@ Thumbs.db
 !/docs/reproduction.md
 !/docs/delivery-evidence.md
 !/docs/engineering-acceptance.md
+!/docs/ai-review-protocol.md
+!/docs/ai-review-results.md
