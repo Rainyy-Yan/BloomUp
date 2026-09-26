@@ -36,6 +36,7 @@ def parser():
         sub=subs.add_parser(name)
         for key in keys: sub.add_argument('--'+key.replace('_','-'),required=True)
         if name=='rubric-register': sub.add_argument('--frozen-by')
+        if name=='demo': sub.add_argument('--formula-version',choices=['legacy-v1','aiv-v2'],default='aiv-v2')
         if name=='prediction-export': sub.add_argument('--pool',choices=['development','audit','risk','all'],default='development')
         if name=='labels-freeze':
             sub.add_argument('--gold',action='append',default=[])
@@ -90,7 +91,7 @@ def dispatch(store,a):
         return {'artifact_counts':counts,'mode':'offline_only','formal_scoring_enabled':False}
     if command=='demo':
         from .demo import run_demo
-        return run_demo(store.root/'synthetic_demo'/uuid.uuid4().hex)
+        return run_demo(store.root/'synthetic_demo'/uuid.uuid4().hex, a.formula_version)
     raise ContractError('UNKNOWN_COMMAND')
 
 

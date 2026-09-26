@@ -3,8 +3,8 @@
 from collections import Counter
 
 from .contracts import require
-from .metrics import student_metrics
-from .core import _simplex
+from .metrics import calculate_students
+from .scoring import validate_metric_spec
 
 
 def freeze_labels(store, admission_id, rubric_id, gold_ids, predictions_id=None, quality_id=None):
@@ -52,15 +52,12 @@ def freeze_labels(store, admission_id, rubric_id, gold_ids, predictions_id=None,
 
 def compute_metrics(store, labels_id, spec):
     store.verify_tree(labels_id)
-    require(set(spec)=={'reference_distribution','weights','reference_status'}, 'INVALID_METRIC_SPEC')
-    _simplex(spec['reference_distribution'],6)
-    _simplex(spec['weights'],3)
-    require(spec['reference_status'] in ['provisional','confirmed'], 'INVALID_REFERENCE_STATUS')
+    version = validate_metric_spec(spec)
     labels = store.get(labels_id, 'labels')['payload']
     dataset = store.get(labels['dataset'], 'dataset')['payload']
     index = {x['turn_id']:x['label'] for x in labels['rows']}
     turns = [x for x in dataset['turns'] if x['turn_id'] in index]
-    rows = student_metrics(turns,index,spec['reference_distribution'],spec['weights'])
+    rows = calculate_students(turns,index,spec)
     present = {(x['term'],x['student_key']) for x in rows}
     for student in dataset['inventory']:
         if (student['term'],student['student_key']) not in present:
@@ -69,19 +66,27 @@ def compute_metrics(store, labels_id, spec):
                          'aiv':None,'rank':None,'mab':None,'observed_hot_change':None,'identification_bounds':None,
                          'sampling_ci':None,'label_sensitivity_interval':None,'missing_reasons':['no_admitted_turns'],
                          'mab_missing_reason':'no_admitted_turns','claim_type':'descriptive','analysis_status':'exploratory'})
-    return store.put('metrics', {'dataset':labels['dataset'],'labels':labels_id,'spec':spec,
+            if version == 'aiv-v2':
+                rows[-1].update(formula_version=version, dhi_symmetric=None, dhi_asymmetric=None,
+                                aiv_contributions={k:None for k in ('hot','ctq','dhi','mab')},
+                                bounds_conditioning=None)
+    return store.put('metrics', {'dataset':labels['dataset'],'labels':labels_id,'spec':spec,'formula_version':version,
                                 'rows':sorted(rows,key=lambda x:(x['term'],x['student_key'])),
                                 'origins':labels['origins'],'synthetic':dataset['synthetic'],
                                 'scope_status':labels['scope_status'],'analysis_status':'exploratory','claim_type':'descriptive',
                                 'limits':['Scores describe observed question demands, not independently measured learning ability.',
                                           'AIV uses available labels and available original endpoint pairs; coverage may be incomplete.',
-                                          'CTQ-missing bounds hold available-label HOT/DHI fixed; not full missing-label bounds or confidence intervals.']},
+                                          'Missing-indicator bounds hold observed indicators fixed; not full missing-label bounds or confidence intervals.']},
                      [labels_id], spec)
 
 
 def sensitivity(store, metrics_id):
     store.verify_tree(metrics_id)
     metric = store.get(metrics_id,'metrics')['payload']
+    if validate_metric_spec(metric['spec']) == 'aiv-v2':
+        from .comparison import compare_schemes
+        return store.put('sensitivity', dict(compare_schemes(metric['rows'], metric['spec']),
+                                            dataset=metric['dataset'], metrics=metrics_id), [metrics_id])
     base = metric['spec']['weights']
     scenarios = {'primary':base,'balanced':[1/3]*3}
     for i in range(3):

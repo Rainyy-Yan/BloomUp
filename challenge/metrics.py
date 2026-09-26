@@ -4,9 +4,11 @@ from collections import defaultdict
 
 from .core import _simplex
 from .contracts import require
+from .scoring import (INDICATORS, aggregate_indicators, breadth_score, normalized_dhi,
+                      transition_quality, validate_metric_spec)
 
 
-def student_metrics(turns, labels, reference, weights):
+def student_metrics(turns, labels, reference, weights, utilities=None):
     _simplex(reference, 6)
     _simplex(weights, 3)
     known_ids = {x['turn_id'] for x in turns}
@@ -27,7 +29,8 @@ def student_metrics(turns, labels, reference, weights):
             if len(conv) < 2: continue
             first, last = (labels.get(conv[i]['turn_id']) for i in [0, -1])
             if first is not None and last is not None:
-                ctqs.append(0.5+(last-first)/10)
+                ctqs.append(0.5+(last-first)/10 if utilities is None else
+                            transition_quality([first, last], utilities))
                 changes.append(int(last >= 4)-int(first >= 4))
         result = {'term': term, 'student_key': student, 'candidate_turns': len(rows), 'labeled_turns': len(values),
                   'coverage': len(values)/len(rows), 'endpoint_pairs': len(ctqs), 'abl': None, 'hot': None,
@@ -46,4 +49,43 @@ def student_metrics(turns, labels, reference, weights):
         result['mab'] = min(len(agent_ids), 3)/3 if all(x.get('agent_id') for x in rows) else None
         result['mab_missing_reason'] = 'unknown_agent_identity' if result['mab'] is None else None
         results.append(result)
+    return results
+
+
+def calculate_students(turns, labels, spec):
+    """Dispatch explicitly versioned formulas; never reinterpret a legacy spec."""
+    version = validate_metric_spec(spec)
+    if version == 'legacy-v1':
+        return student_metrics(turns, labels, spec['reference_distribution'], spec['weights'])
+    grouped = defaultdict(list)
+    catalog = spec['agent_catalog']
+    for turn in turns:
+        agent = turn.get('agent_id')
+        require(agent is None or isinstance(agent, str), 'INVALID_AGENT_ID')
+        if agent and catalog is not None:
+            require(agent in catalog, 'AGENT_OUTSIDE_FROZEN_CATALOG')
+        grouped[(turn['term'], turn['student_key'])].append(turn)
+    results = student_metrics(turns, labels, spec['reference_distribution'], [0.5, 0.3, 0.2], spec['utilities'])
+    for result in results:
+        rows = grouped[(result['term'], result['student_key'])]
+        values = [labels[t['turn_id']] for t in rows if labels.get(t['turn_id']) is not None]
+        result.update(formula_version=version, dhi_symmetric=None, dhi_asymmetric=None)
+        if values:
+            result['hot'] = sum(level >= 4 for level in values) / len(values)
+            p = [values.count(k) / len(values) for k in range(1, 7)]
+            result['dhi_symmetric'] = normalized_dhi(p, spec['reference_distribution'])
+            result['dhi_asymmetric'] = normalized_dhi(p, spec['reference_distribution'],
+                                                     spec['shortage_penalties'], spec['excess_penalties'])
+        result['dhi'] = result['dhi_' + spec['dhi_mode']]
+        reason = ('unknown_agent_catalog' if catalog is None else
+                  'unknown_agent_identity' if any(not t.get('agent_id') for t in rows) else None)
+        result['mab_missing_reason'] = reason
+        result['mab'] = None if reason else breadth_score(len({t['agent_id'] for t in rows}), len(catalog))
+        score = aggregate_indicators([result[k] for k in INDICATORS], spec['weights'], spec['aggregation'])
+        result['aiv'] = score['aiv']
+        result['identification_bounds'] = score['identification_bounds']
+        result['aiv_contributions'] = dict(zip(INDICATORS, score['contributions']))
+        result['bounds_conditioning'] = 'available_label_metrics_and_observed_original_endpoints_fixed'
+        if reason:
+            result['missing_reasons'].append(reason)
     return results

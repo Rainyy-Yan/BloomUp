@@ -7,7 +7,7 @@ import statistics
 from tools.label_noise import assumed_neighbour_kernel, percentile
 
 from .contracts import finite_number, require
-from .metrics import student_metrics
+from .metrics import calculate_students
 
 
 METRICS = ('abl', 'hot', 'ctq', 'dhi', 'aiv')
@@ -70,7 +70,7 @@ def label_sensitivity(store, metrics_id, error_masses=(0, .1, .2, .3), seed=2045
         if not known:
             excluded_terms.append({'term': term, 'reason': 'no_valid_labels'})
             continue
-        baseline = student_metrics(turns, term_labels, spec['reference_distribution'], spec['weights'])
+        baseline = calculate_students(turns, term_labels, spec)
         baseline = [row for row in baseline if row['labeled_turns'] > 0]
         point = _means(baseline)
         clusters = defaultdict(list)
@@ -90,7 +90,7 @@ def label_sensitivity(store, metrics_id, error_masses=(0, .1, .2, .3), seed=2045
             for _ in range(replicates):
                 perturbed = {tid: None if level is None else _perturb(level, kernel, noise_rng.random())
                              for tid, level in term_labels.items()}
-                rows = student_metrics(turns, perturbed, spec['reference_distribution'], spec['weights'])
+                rows = calculate_students(turns, perturbed, spec)
                 by_student = {row['student_key']: row for row in rows}
                 label_means = _means(rows)
                 drawn = [by_student[student] for unit in bootstrap_rng.choices(units, k=len(units)) for student in unit]

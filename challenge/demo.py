@@ -12,6 +12,7 @@ from .evaluation import evaluate_quality, observed_analysis
 from .analysis import freeze_labels, compute_metrics, sensitivity
 from .reporting import build_report
 from .uncertainty import label_sensitivity
+from .contracts import read_json, require
 
 
 def synthetic_dataset(store):
@@ -40,7 +41,8 @@ def fill_synthetic_review(path, levels):
     write_csv(path,rows,IMMUTABLE+EDITABLE)
 
 
-def run_demo(root):
+def run_demo(root, formula_version='legacy-v1'):
+    require(formula_version in ('legacy-v1', 'aiv-v2'), 'UNKNOWN_FORMULA_VERSION')
     store=ArtifactStore(root)
     dataset=synthetic_dataset(store)
     project=Path(__file__).resolve().parents[1]
@@ -66,8 +68,11 @@ def run_demo(root):
     quality=evaluate_quality(store,prediction,gold,{'min_n':2,'min_coverage':1,'min_linear_kappa':.6,
                                                   'audit_unseen':True,'attested_by':'SYNTHETIC-TEST-NOT-REAL-ATTESTATION'})
     labels=freeze_labels(store,admission,rubric,[gold],prediction,quality)
-    metrics=compute_metrics(store,labels,{'reference_distribution':[.1,.2,.25,.25,.15,.05],
-                                        'weights':[.5,.3,.2],'reference_status':'provisional'})
+    spec = read_json(project / 'configs' / ('metrics.v2.json' if formula_version == 'aiv-v2' else 'metrics.v1.json'))
+    if formula_version == 'aiv-v2':
+        spec.update(agent_catalog=['synthetic_agent'], agent_catalog_status='provisional',
+                    reference_rationale='Synthetic demonstration target only; not a validated course distribution.')
+    metrics=compute_metrics(store,labels,spec)
     observed=observed_analysis(store,metrics,replicates=200)
     weights=sensitivity(store,metrics)
     noise=label_sensitivity(store,metrics,replicates=200)
