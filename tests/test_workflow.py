@@ -13,7 +13,7 @@ from challenge.demo import synthetic_dataset, fill_synthetic_review, run_demo
 from challenge.annotation.reviews import register_rubric, create_task, import_review, adjudicate, IMMUTABLE, EDITABLE
 from challenge.annotation.predictions import export_request, import_predictions
 from challenge.ingest import admit_dataset
-from challenge.analysis import freeze_labels, compute_metrics
+from challenge.analysis import freeze_labels, compute_metrics, sensitivity
 from challenge.evaluation import agreement, evaluate_quality
 from challenge.pipeline import write_json, write_csv
 
@@ -152,6 +152,31 @@ class EndToEndTests(unittest.TestCase):
         quality=evaluate_quality(self.store,result['predictions'],result['gold'],policy)
         with self.assertRaisesRegex(ContractError,'MODEL_QUALITY_BLOCKED'):
             freeze_labels(self.store,result['admission'],result['rubric'],[],result['predictions'],quality)
+
+    def test_unconfirmed_quality_thresholds_report_metrics_but_block_adoption(self):
+        result=self.result
+        policy={'min_n':None,'min_coverage':None,'min_linear_kappa':None,
+                'audit_unseen':True,'attested_by':'SYNTHETIC'}
+        quality=evaluate_quality(self.store,result['predictions'],result['gold'],policy)
+        payload=self.store.get(quality)['payload']
+        self.assertEqual(payload['paired_n'],12)
+        self.assertIn('quality_criteria_not_confirmed',payload['blocked_reasons'])
+        self.assertFalse(payload['passed'])
+        with self.assertRaisesRegex(ContractError,'MODEL_QUALITY_BLOCKED'):
+            freeze_labels(self.store,result['admission'],result['rubric'],[],result['predictions'],quality)
+
+    def test_weight_sensitivity_stays_within_terms(self):
+        original=self.store.get(self.result['metrics'])['payload']
+        rows=[dict(row) for row in original['rows']]
+        extra=dict(next(row for row in rows if row['aiv'] is not None))
+        extra.update(term='second_term',student_key='SYNTHETIC-OTHER',hot=0,ctq=0,dhi=0,aiv=0)
+        rows.append(extra)
+        metrics=self.store.put('metrics',dict(original,rows=rows),[self.result['labels']],original['spec'])
+        result=self.store.get(sensitivity(self.store,metrics))['payload']['rows']
+        primary=[row for row in result if row['scenario']=='primary']
+        self.assertEqual(len(primary),2)
+        self.assertEqual({row['term'] for row in primary},{'synthetic_term','second_term'})
+        self.assertEqual(next(row['mean_aiv'] for row in primary if row['term']=='second_term'),0)
 
     def test_bootstrap_and_sensitivity_present_without_ranking(self):
         observed=self.store.get(self.result['observed'])['payload']['rows'][0]

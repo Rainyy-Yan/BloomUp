@@ -24,7 +24,7 @@ def build_report(store, metrics_id, observed_id=None, sensitivity_id=None, label
              f"范围状态：{metric['scope_status']}；参考分布状态：{metric['spec']['reference_status']}。", '',
              '分数描述已观察到的提问认知需求，不等同于学习能力、成绩或 AI 带来的提升。', '',
              '## 教师视图：学期汇总', '',
-             '|学期|清单人数|有标签人数|有 AIV 人数|已准入轮次|有效标签轮次|平均 AIV|',
+             '|学期|候选记录学生数|有标签人数|有 AIV 人数|已准入轮次|有效标签轮次|平均 AIV|',
              '|---|---:|---:|---:|---:|---:|---:|']
     terms=defaultdict(list)
     for row in metric['rows']: terms[row['term']].append(row)
@@ -44,8 +44,8 @@ def build_report(store, metrics_id, observed_id=None, sensitivity_id=None, label
             for row in payload['rows']:
                 lines.append(f"- {row['term']}：{row['students']} 人，{row['components']} 组，观测均值 {fmt(row['mean_observed_hot_change'])}；95% 重抽样区间 {row['sampling_ci_95'] if row['sampling_ci_95'] else '组数不足，未估计'}。")
         elif kind=='sensitivity':
-            lines += ['', '## 权重敏感性', '', '固定同一批可计算 AIV 的学生，仅改变权重；不解释为标注误差区间。', '', '|场景|人数|平均 AIV|','|---|---:|---:|']
-            lines += [f"|{r['scenario']}|{r['students']}|{fmt(r['mean_aiv'])}|" for r in payload['rows']]
+            lines += ['', '## 权重敏感性', '', '各学期分别固定可计算 AIV 的学生，仅改变权重；不合并学期，不解释为标注误差区间。', '', '|学期|场景|人数|平均 AIV|','|---|---|---:|---:|']
+            lines += [f"|{str(r['term']).replace('|','/').replace(chr(10),' ')}|{r['scenario']}|{r['students']}|{fmt(r['mean_aiv'])}|" for r in payload['rows']]
         else:
             lines += ['', '## 假设性标注扰动与重抽样', '',
                       '以下错误概率为预设情景，不是实测模型错误率或人工混淆矩阵。区间为模拟分位数，不是因果置信区间。', '',

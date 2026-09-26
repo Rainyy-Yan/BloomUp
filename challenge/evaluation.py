@@ -34,14 +34,15 @@ def evaluate_quality(store, predictions_id, gold_id, policy):
     pred, gold = (store.get(aid, kind)['payload'] for aid, kind in [(predictions_id,'predictions'),(gold_id,'gold')])
     require(all(pred[k] == gold[k] for k in ['dataset','rubric']), 'QUALITY_VERSION_MISMATCH')
     require(set(policy) == {'min_n','min_coverage','min_linear_kappa','audit_unseen','attested_by'}, 'INVALID_QUALITY_POLICY')
-    require(type(policy['min_n']) is int and policy['min_n'] >= 2, 'INVALID_MIN_N')
-    finite_number(policy['min_coverage'], 0, 1)
-    finite_number(policy['min_linear_kappa'], -1, 1)
+    if policy['min_n'] is not None:
+        require(type(policy['min_n']) is int and policy['min_n'] >= 2, 'INVALID_MIN_N')
+    if policy['min_coverage'] is not None:
+        finite_number(policy['min_coverage'], 0, 1)
+    if policy['min_linear_kappa'] is not None:
+        finite_number(policy['min_linear_kappa'], -1, 1)
     require(type(policy['audit_unseen']) is bool, 'INVALID_AUDIT_ATTESTATION')
     require(isinstance(policy['attested_by'], str) and policy['attested_by'].strip(), 'ATTESTATION_REQUIRED')
     dataset = store.get(pred['dataset'], 'dataset')['payload']
-    require(dataset['synthetic'] or policy['min_n'] >= 30 and policy['min_coverage'] >= .9 and policy['min_linear_kappa'] >= .6,
-            'QUALITY_POLICY_BELOW_V1_FLOOR')
     index = {x['turn_id']: x for x in pred['rows']}
     require({x['turn_id'] for x in gold['rows']} == set(dataset['sampling']['selected'][gold['pool']]), 'QUALITY_SAMPLE_CHANGED')
     pairs, weighted, null_gold, missing_pred = [], [], 0, 0
@@ -61,16 +62,19 @@ def evaluate_quality(store, predictions_id, gold_id, policy):
     raw, adjusted = agreement(pairs), agreement(weighted)
     coverage = len(pairs)/(len(pairs)+missing_pred) if pairs or missing_pred else 0
     reasons = []
+    if any(policy[key] is None for key in ['min_n','min_coverage','min_linear_kappa']):
+        reasons.append('quality_criteria_not_confirmed')
     if gold['pool'] != 'audit' or not policy['audit_unseen']: reasons.append('not_attested_independent_audit')
-    if len(pairs) < policy['min_n']: reasons.append('insufficient_pairs')
-    if coverage < policy['min_coverage']: reasons.append('insufficient_prediction_coverage')
+    if policy['min_n'] is not None and len(pairs) < policy['min_n']: reasons.append('insufficient_pairs')
+    if policy['min_coverage'] is not None and coverage < policy['min_coverage']: reasons.append('insufficient_prediction_coverage')
     if len(weighted) != len(pairs): reasons.append('missing_design_weights')
-    if adjusted['linear_kappa'] is None or adjusted['linear_kappa'] < policy['min_linear_kappa']: reasons.append('insufficient_linear_kappa')
+    if policy['min_linear_kappa'] is not None and (adjusted['linear_kappa'] is None or adjusted['linear_kappa'] < policy['min_linear_kappa']):
+        reasons.append('insufficient_linear_kappa')
     return store.put('quality', {'dataset':pred['dataset'], 'rubric':pred['rubric'], 'predictions':predictions_id,
                                 'gold':gold_id, 'policy':policy, 'paired_n':len(pairs), 'gold_na':null_gold,
                                 'prediction_na':missing_pred, 'coverage':coverage, 'unweighted':raw, 'design_weighted':adjusted,
                                 'passed':not reasons, 'blocked_reasons':reasons, 'sampling_ci':None,
-                                'limits':['Point-estimate operational gate, not a statistical guarantee.',
+                                'limits':['Thresholds are user-confirmed operational criteria, not official or statistical guarantees.',
                                           'Weights are preparation design weights; no exact complex-survey variance.',
                                           'Audit independence is attested, not technically provable.',
                                           'Macro F1 averages all six classes; unsupported classes count as zero.']},

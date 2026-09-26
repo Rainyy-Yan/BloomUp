@@ -219,7 +219,7 @@ def prepare(project_root=ROOT, config_path=None):
     write_jsonl(run/'private/turns.jsonl', turns)
     write_json(run/'private/sampling_design.json', splits)
     by_id = {x['turn_id']: x for x in turns}
-    fields = ['turn_id', 'term', 'record_id', 'student_key', 'turn_index', 'question', 'prior_context',
+    fields = ['turn_id', 'term', 'record_id', 'turn_index', 'question', 'prior_context',
               'bloom_level', 'evidence_quote', 'outsourcing', 'insufficient_evidence',
               'confidence_1_to_5', 'reviewer_id', 'reviewed_at', 'notes']
     for pool, ids in splits['selected'].items():
@@ -238,17 +238,6 @@ def prepare(project_root=ROOT, config_path=None):
     write_csv(run/'annotations/parse_review.csv', review_rows,
               ['record_id', 'term', 'source_file', 'source_row', 'parse_status', 'parse_reason',
                'candidate_turn_count', 'raw_text', 'roles_correct', 'reviewer_id', 'notes'])
-    students = []
-    for term, values in [('fall', {identity(x['学号']) for x in usage}), ('spring', roster_ids)]:
-        for value in sorted(values):
-            sid = pseudonym(key, term, value)
-            selected = [x for x in records if x['student_key'] == sid]
-            own_turns = [x for x in turns if x['student_key'] == sid]
-            students.append({'term': term, 'student_key': sid, 'candidate_records': len(selected),
-                             'candidate_turns': len(own_turns), 'labeled_turns': 0,
-                             'score_status': 'awaiting_annotation' if own_turns else 'no_usable_text',
-                             'abl': None, 'hot': None, 'ctq': None, 'dhi': None, 'aiv': None, 'rank': None})
-    write_csv(run/'student_inventory_NOT_SCORED.csv', students, list(students[0]))
     summary = {
         'state': 'PREPARATION_READY_NOT_EVALUATED', 'run_id': run_id, 'created_utc': now.isoformat(),
         'source_files': len(manifest), 'source_hashes_verified': True, 'fall_usage_mismatches': mismatches,
@@ -258,6 +247,8 @@ def prepare(project_root=ROOT, config_path=None):
                           'time_min': min(x['_time'] for x in spring), 'time_max': max(x['_time'] for x in spring)},
         'spring_roster_size': len(roster_ids), 'spring_exclusion_first_reason': dict(exclusions),
         'selected_records': len(records), 'candidate_turns': len(turns),
+        'selected_students_by_term': {term: len({x['student_key'] for x in records if x['term'] == term})
+                                      for term in ['fall', 'spring']},
         'by_term': {term: {'records': sum(x['term'] == term for x in records),
                           'parse_status': dict(Counter(x['parse_status'] for x in records if x['term'] == term)),
                           'turns': sum(x['term'] == term for x in turns),
@@ -284,7 +275,7 @@ def prepare(project_root=ROOT, config_path=None):
               f'- 主口径候选：{len(records)}条记录、{len(turns)}个提问轮次。',
               f'- 人工样本：{summary["sampling_counts"]}。',
               '- 每次运行新建目录，不覆盖已填写标注表。身份键保存在工程.local目录，勿删除或公开。',
-              '- CSV中的模型/人工标签未填写；学生表所有分数留空。',
+              '- CSV中的模型/人工标签未填写；不导出学生级清单或分数。',
               '- 春季日期、角色解析和标注质量仍待确认，当前不能用于正式论文结论。', '',
               '## 立即可做', '',
               '1. 依据docs/标注手册_v1.md填写annotations/parse_review.csv，检查角色与多轮边界。',

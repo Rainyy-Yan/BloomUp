@@ -1,6 +1,6 @@
 """Analysis label snapshots and conservative descriptive scoring."""
 
-from collections import Counter
+from collections import Counter, defaultdict
 
 from .contracts import require
 from .metrics import student_metrics
@@ -88,11 +88,15 @@ def sensitivity(store, metrics_id):
         for multiplier in [.9,1.1]:
             weights = [value*(multiplier if j==i else 1) for j,value in enumerate(base)]
             scenarios[f'w{i+1}_x{multiplier}'] = [w/sum(weights) for w in weights]
-    eligible = [r for r in metric['rows'] if r['aiv'] is not None]
+    eligible_by_term = defaultdict(list)
+    for row in metric['rows']:
+        if row['aiv'] is not None:
+            eligible_by_term[row['term']].append(row)
     results = []
-    for name, weights in scenarios.items():
-        values = [100*sum(w*r[k] for w,k in zip(weights,['hot','ctq','dhi'])) for r in eligible]
-        results.append({'scenario':name,'weights':weights,'students':len(values),'mean_aiv':sum(values)/len(values) if values else None})
+    for term, rows in sorted(eligible_by_term.items()):
+        for name, weights in scenarios.items():
+            values = [100*sum(w*r[k] for w,k in zip(weights,['hot','ctq','dhi'])) for r in rows]
+            results.append({'term':term,'scenario':name,'weights':weights,'students':len(values),'mean_aiv':sum(values)/len(values)})
     return store.put('sensitivity', {'dataset':metric['dataset'],'metrics':metrics_id,'rows':results,
-                                    'claim_type':'descriptive','limits':['Weight sensitivity only; same available-score students.',
+                                    'claim_type':'descriptive','limits':['Within-term weight sensitivity only; same available-score students in each term.',
                                                                       'Not label-error uncertainty or reference-distribution sensitivity.']},[metrics_id])

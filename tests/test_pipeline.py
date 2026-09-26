@@ -7,6 +7,8 @@ import unittest
 from openpyxl import Workbook
 
 from challenge.pipeline import ROOT, _csv_value, prepare, validate_annotation
+from challenge.ingest import register_run
+from challenge.storage import ArtifactStore
 
 
 def save_book(path, sheets):
@@ -55,12 +57,24 @@ class PreparationTests(unittest.TestCase):
             'outside_provisional_window': 1, 'not_in_primary_roster': 1, 'different_channel': 1})
         self.assertFalse(result['formal_scores_computed'])
         run = self.project/'runs'/result['run_id']
-        with (run/'student_inventory_NOT_SCORED.csv').open(encoding='utf-8-sig') as stream:
-            rows = list(csv.DictReader(stream))
-        self.assertEqual(len(rows), 3)
-        self.assertTrue(all(row['aiv'] == '' for row in rows))
+        self.assertFalse((run/'student_inventory_NOT_SCORED.csv').exists())
+        self.assertEqual(result['selected_students_by_term'], {'fall': 1, 'spring': 1})
+        with (run/'annotations/development_rater_A.csv').open(encoding='utf-8-sig', newline='') as stream:
+            self.assertNotIn('student_key', csv.DictReader(stream).fieldnames)
+        for path in run.rglob('*.csv'):
+            with path.open(encoding='utf-8-sig', newline='') as stream:
+                self.assertNotIn('student_key', csv.DictReader(stream).fieldnames, str(path))
         text = (run/'private/turns.jsonl').read_text(encoding='utf-8')
         self.assertNotIn('"student_key": "001"', text)
+
+    def test_import_rebuilds_only_candidate_student_inventory_in_memory(self):
+        result = self.run_prepare()
+        run = self.project/'runs'/result['run_id']
+        store = ArtifactStore(self.project/'state')
+        dataset = store.get(register_run(store,run))['payload']
+        self.assertEqual(len(dataset['inventory']),2)
+        self.assertEqual({row['term'] for row in dataset['inventory']},{'fall','spring'})
+        self.assertFalse((run/'student_inventory_NOT_SCORED.csv').exists())
 
     def test_rerun_preserves_work_and_ids_and_source_change_stops(self):
         first = self.run_prepare()

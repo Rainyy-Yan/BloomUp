@@ -12,7 +12,7 @@ def register_run(store, run_path):
     manifest = read_json(run/'generated_manifest.json')
     hashes = {x['path']: x['sha256'] for x in manifest}
     needed = ['private/turns.jsonl', 'private/records.jsonl', 'private/sampling_design.json',
-              'config_snapshot.json', 'source_manifest.csv', 'student_inventory_NOT_SCORED.csv', 'annotations/parse_review.csv']
+              'config_snapshot.json', 'source_manifest.csv', 'annotations/parse_review.csv']
     for name in needed:
         require(name in hashes and file_hash(run/name) == hashes[name], 'PREPARED_INPUT_CHANGED', name)
     def lines(name):
@@ -24,13 +24,17 @@ def register_run(store, run_path):
     for row in turns:
         require(row['record_id'] in record_index and row.get('label') is None, 'INVALID_CANDIDATE_TURN')
         row['text_hash'] = turn_hash(row)
+    # Reconstruct only students with selected records in memory; roster-only identities
+    # remain represented by aggregate counts in readiness.json, never a per-student CSV.
+    inventory = [{'term': term, 'student_key': student_key}
+                 for term, student_key in sorted({(x['term'], x['student_key']) for x in records})]
     def read_csv(name):
         with (run/name).open(encoding='utf-8-sig', newline='') as stream:
             return list(csv.DictReader(stream))
     config = read_json(run/'config_snapshot.json')
     payload = {'turns': turns, 'records': [{k:v for k,v in x.items() if k != 'raw_text'} for x in records],
                'sampling': read_json(run/'private/sampling_design.json'),
-               'inventory': read_csv('student_inventory_NOT_SCORED.csv'),
+               'inventory': inventory,
                'source_manifest': read_csv('source_manifest.csv'), 'preparation_run': run.name,
                'required_parse_sample': [x['record_id'] for x in read_csv('annotations/parse_review.csv')],
                'scope_status': 'provisional', 'synthetic': False,

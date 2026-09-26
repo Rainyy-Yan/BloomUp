@@ -17,6 +17,8 @@ python -m challenge parse-template --dataset DATASET_ID
 
 RUN_ID从latest_run.json读取，大写ID均用上一步返回值替换。run须与生成清单的SHA-256一致。人工工作在导出的workspaces进行，固定run与原文件保持只读。不得删除.local身份键或baseline来绕过来源变化检查。
 
+准备阶段不导出含学生键的CSV。private目录的JSONL仍含本地假名键与提问原文，必须留在授权设备；导入时只从候选记录在内存重建学生集合。仅在名单但无候选记录者只计入readiness.json的聚合名单人数，不进入学生级指标分母。
+
 ## 2. 解析准入
 
 对照固定run的private/records.jsonl，实际核对后填写解析模板的reviewer_id与record_decisions：每条含record_id、status=accepted/rejected、reason。
@@ -59,7 +61,7 @@ model.local.json参照model.template.json填写实际名称、版本与参数。
 
 响应外层为 `{"task_id":"...","predictions":[...],"usage":null}`。每条预测遵守prompts/label.schema.json，所有请求ID恰好一次；证据属于当前提问。usage如已知可填input_tokens/output_tokens非负整数，未知保持null。
 
-quality.local.json参照quality.template.json。真实数据门槛不低于配对数30、预测覆盖0.9、设计加权线性Kappa 0.6；audit_unseen、attested_by须由实际负责人按真实情况填写。这是操作门槛，不是官方标准或统计保障。宏F1平均固定六类，未支持类记0；保留混淆矩阵、NA计数。当前没有复杂抽样方差/Kappa置信下界。
+quality.local.json参照quality.template.json。模板中的配对数、覆盖率和设计加权线性Kappa门槛均为空；先报告实际值，再由负责人明确设定采纳准则。任何门槛仍为空时只完成质量测量，不允许采用模型标签。audit_unseen、attested_by须由实际负责人按真实情况填写。自定准则不是官方标准或统计保障。宏F1平均固定六类，未支持类记0；保留混淆矩阵、NA计数。当前没有复杂抽样方差/Kappa置信下界。
 
 质量始终评估原预测；人工修正只影响随后采用标签，不反写模型成绩。
 
@@ -77,9 +79,9 @@ python -m challenge analysis-label-sensitivity --metrics METRICS_ID --error-mass
 
 HOT=L4—L6在有效标签中的比例，ABL=平均等级；CTQ=有效多轮对话的`0.5+(末轮−首轮)/10`均值；DHI=`1−0.5*sum(abs(p−q))`；默认AIV=`100*(0.5*HOT+0.3*CTQ+0.2*DHI)`。参考分布仍为暂定。
 
-原首末轮缺失则该对话CTQ缺失，不拿内部轮次补位；中间缺失保留覆盖。无CTQ不出AIV单值，只有固定已有HOT/DHI的条件上下界，不是置信区间或所有缺失标签的边界。学生清单中无有效轮次者仍保留缺失，不排名。
+原首末轮缺失则该对话CTQ缺失，不拿内部轮次补位；中间缺失保留覆盖。无CTQ不出AIV单值，只有固定已有HOT/DHI的条件上下界，不是置信区间或所有缺失标签的边界。有候选记录但无有效轮次者仍保留缺失，不排名。
 
-analysis-observed计算学生等权的首末高阶指示值变化，再按学期内相关组bootstrap，不是AI因果增量。analysis-sensitivity比较8组权重。analysis-label-sensitivity将相邻等级扰动接入同一冻结标签，见[方法说明](integration.md)。各情景保持相同缺失模式。
+analysis-observed计算学生等权的首末高阶指示值变化，再按学期内相关组bootstrap，不是AI因果增量。analysis-sensitivity在每个学期内分别比较8组权重，不计算跨学期混合均值。analysis-label-sensitivity将相邻等级扰动接入同一冻结标签，见[方法说明](integration.md)。各情景保持相同缺失模式。
 
 ## 6. 报告与恢复
 
