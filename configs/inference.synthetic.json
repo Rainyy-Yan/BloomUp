@@ -1,0 +1,14 @@
+{
+  "provider": "synthetic",
+  "endpoint": null,
+  "api_key_env": "BLOOMUP_MINIMAX_API_KEY",
+  "budget_id": "synthetic-demo",
+  "budget_cny": "1",
+  "prior_spend_cny": "0",
+  "input_cny_per_million": "0",
+  "output_cny_per_million": "0",
+  "price_basis": "Offline synthetic fixture: no network calls or billing",
+  "max_requests": 12,
+  "max_attempts": 2,
+  "timeout_seconds": 30
+}

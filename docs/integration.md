@@ -10,6 +10,24 @@ prepare_qa_text.py仍按原规则构造记录级question_text、qid及固定数�
 
 评分入口收敛到`challenge.metrics.calculate_students()`，依据明确版本调用legacy-v1或aiv-v2。两者共用基础观察统计和原始首末轮处理，各自只计算一次版本公式。已移除仅被测试调用的`challenge.core.metrics()`和`challenge.core.asymmetric_dhi()`：旧版学生评分仍可调用`student_metrics()`；归一化DHI使用`scoring.normalized_dhi()`。这些接口输入和返回值不同，仓外直接导入旧core函数的代码需要迁移，不能机械替换函数名。
 
+## PR #3 与 PR #8 的验收对照
+
+核对基线 main `d28419c`（已含 #2/#4），候选 #8 `80b5f74`，旧 Draft #3 `89e4419`。以下是作者侧差异核对，不代替维护者审查或合并决定。
+
+|旧修复意图|#8 保留/调整的行为|对应证据|
+|---|---|---|
+|质量模板空置与取消固定底线|保留 null 准则；未确认不采纳模型标签；Kappa 不可计算仍阻断|test_unconfirmed_quality_reports_metrics_but_blocks_adoption、test_explicit_quality_policy_has_no_hardcoded_real_data_floor|
+|旧版敏感性按学期|保留分学期，并输出空学期的缺失均值；不改 v2 的方案比较|test_legacy_sensitivity_separates_terms_including_empty_scores、ScoringWorkflow|
+|不导出学生键 CSV|保留；另经 readiness 哈希保留来源总人数，报告区分两个分母|test_window_roster_channel_and_no_invented_scores、test_import_preserves_population_counts_without_roster_only_identities|
+|reporting.py 集成|在包含 v2 报告分支的基线上修改旧版显示，不用 #3 的旧文件覆盖 v2 内容|test_v2_demo_report_noise_and_dependency_tree；历史无 term 产物显示旧版未分学期|
+|workflow.md 集成|替换旧质量阈值、人数与学期说明；保留 v2 数学边界及 #4 的 B 模块入口|工作流文档逐段对照；B 阻断/演示回归仍在完整套件|
+
+候选共16个变更文件：challenge 的 CLI、analysis、core、evaluation、ingest、metrics、pipeline、reporting；quality.template；integration/workflow/标注手册；test_core/test_pipeline/test_workflow；tools/error_propagation。#8 不机械合并 #3，因此没有把冲突两侧整文件二选一；以上表格列出保留和调整的语义。
+
+验证记录：`python -m unittest discover -s tests -q` 退出0，112项通过；400次合成旧/新评分比较通过（1e-12容差，最大绝对差1.42e-14）。[候选 CI](https://github.com/Rainyy-Yan/BloomUp/actions/runs/36225082265)三个环境通过。`demo`、`causal-demo` 使用短状态目录退出0；同一代码哈希 `8988312a525f58406b6ba679a4db9ef4b76f7edde75c18709300f2a1c963ea6e` 下的 `status` 在2026-09-26退出0。深路径 demo 曾触发 Windows WinError 3，原存储路径限制未修复。
+
+#8 尚未合并；#3 尚未关闭。维护者确认替代关系及合并后，再核验实际 main，不将上述候选检查冒充合并验收。
+
 ## 不直接合并的研究对象
 
 | 维度 | 原有脚本 | 新流水线 |
@@ -21,7 +39,7 @@ prepare_qa_text.py仍按原规则构造记录级question_text、qid及固定数�
 | 扰动核 | 每次重抽样的标签频率分配20%假设质量 | 每学期固定观察频率分配指定假设质量 |
 | 重抽样 | 分开的记录/轮次学生集 | 同一冻结轮次快照，按学生及精确重复关联组整体抽样 |
 | 区间 | 保留历史ci字段与解释 | 区分仅扰动分位数和联合重抽样分位数 |
-| 排序 | 保留历史top-quartile与flip字段 | 不输出学生名次、四分位名单或精确排名 |
+| 排序 | 保留历史top-quartile与flip字段 | 默认聚合；显式 student-export 可在受控本地按学期完整人群导出排名 |
 
 不能直接拿两个入口的数值解释为同一总体的差异，也不能将旧qid映射成turn_id后复用标签。实际迁移须固定源文件与范围、核对解析正文、由真实审阅者确认；本次不提供绕过确认的自动标签迁移。
 
@@ -41,10 +59,10 @@ HOT保持0—1尺度，与旧脚本HOT_pct不同。每学期的指标均值按�
 
 产物ID包含内容、输入版本、配置哈希和实现哈希；实现哈希覆盖challenge与共享tools源码。产物使用短临时名加原子替换，避免Windows深目录下临时文件名过长。校验依赖树可发现修改，但不是数字签名或访问控制。
 
-模型请求仅导出内部文件；没有网络推理入口。所有真实正文、标注及派生结果都在忽略目录，只有人工审查后的源码白名单允许暂存。新CLI不连接旧论文结果，不生成看似完成的人审、模型准确率或真实成绩。
+模型请求默认仅导出内部文件；prediction-run 显式启用后通过预算约束调用 MiniMax，详见 inference.md。所有真实正文、标注及派生结果都在忽略目录，只有人工审查后的源码白名单允许暂存。新CLI不连接旧论文结果，不生成看似完成的人审、模型准确率或真实成绩。
 
 ## 验证与后续
 
 检查覆盖版本错绑、原文变更、重复行、双人冲突、缺失端点、预测证据、质量门槛、原预测与采用标签分离、错误质量边界、相关组支持数、合成整链路和Git隐私忽略规则。CI不依赖赛方附件。
 
-仍需实际工作：独立人审及解析准入、模型运行许可与适配器、真实预测质量验证、如有可识别证据再讨论经验误差模型、因果设计及正式比赛材料。流程记录证据，不代替取得证据。
+仍需实际工作：独立人审及解析准入、真实预测质量验证（MiniMax 许可、预算及适配器联网验收已有）、如有可识别证据再讨论经验误差模型、因果设计及正式比赛材料。流程记录证据，不代替取得证据。

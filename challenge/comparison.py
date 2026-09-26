@@ -34,17 +34,24 @@ def spearman(left, right):
     return max(-1.0, min(1.0, math.fsum(a*b for a,b in zip(x,y))/scale)) if scale else None
 
 
-def compare_schemes(rows, spec):
+def scheme_definitions(spec, include_sensitivity=True):
     require(validate_metric_spec(spec) == 'aiv-v2', 'V2_SPEC_REQUIRED')
     base, aggregation = spec['weights'], spec['aggregation']
     scenarios = [('primary', base, aggregation),
                  ('high_order_linear', PRIORITY_WEIGHTS, {'kind':'linear'}),
                  ('balanced_linear', BALANCED_WEIGHTS, {'kind':'linear'}),
                  ('diminishing_returns', PRIORITY_WEIGHTS, {'kind':'concave','rho':1})]
-    for i in range(4):
-        for multiplier in (.9, 1.1):
-            weights = [w*(multiplier if j == i else 1) for j,w in enumerate(base)]
-            scenarios.append((f'w{i+1}_x{multiplier}', [w/sum(weights) for w in weights], aggregation))
+    if include_sensitivity:
+        for i in range(4):
+            for multiplier in (.9, 1.1):
+                weights = [w*(multiplier if j == i else 1) for j,w in enumerate(base)]
+                scenarios.append((f'w{i+1}_x{multiplier}', [w/sum(weights) for w in weights], aggregation))
+    return scenarios
+
+
+def compare_schemes(rows, spec):
+    scenarios = scheme_definitions(spec)
+    base, aggregation = spec['weights'], spec['aggregation']
     terms = defaultdict(list)
     for row in rows:
         terms[row['term']].append(row)

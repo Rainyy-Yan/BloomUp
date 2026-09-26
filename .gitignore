@@ -60,6 +60,8 @@ Thumbs.db
 /artifacts/
 /workspaces/
 /jobs/
+/inference/
+/exports/
 /synthetic_demo/
 /latest_run.json
 /latest_workflow.json
@@ -88,3 +90,14 @@ Thumbs.db
 !/docs/aiv-mathematics.md
 !/docs/causal-b.md
 !/docs/causal-b-architecture.md
+!/docs/competition_traceability.md
+!/docs/annotation-study-plan.md
+!/docs/data-scope-register.md
+!/docs/inference.md
+!/docs/aiv-version-crosswalk.md
+!/docs/pilot-diagnosis.md
+!/docs/causal-data-feasibility.md
+!/docs/allocation.md
+!/docs/reproduction.md
+!/docs/delivery-evidence.md
+!/docs/engineering-acceptance.md

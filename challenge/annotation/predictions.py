@@ -7,6 +7,16 @@ from ..contracts import require, read_json, fingerprint, label_check, finite_num
 from ..pipeline import write_json
 
 
+def validate_prediction(row, source):
+    """Shared per-row contract for offline imports and controlled inference."""
+    fields = {'turn_id','label','evidence','reason','outsourcing','insufficient_evidence','self_reported_confidence'}
+    require(isinstance(row, dict) and set(row) == fields, 'INVALID_PREDICTION_FIELDS')
+    require(row['turn_id'] == source['turn_id'], 'PREDICTION_ID_MISMATCH')
+    label_check(row['label'], row['evidence'], source['question'], row['insufficient_evidence'], row['reason'])
+    require(row['outsourcing'] in ['yes','no','uncertain'], 'INVALID_OUTSOURCING')
+    finite_number(row['self_reported_confidence'], 0, 1)
+
+
 def export_request(store, dataset_id, rubric_id, model_spec, prompt_path, pool='all'):
     for aid in [dataset_id,rubric_id]: store.verify_tree(aid)
     dataset = store.get(dataset_id, 'dataset')['payload']
@@ -56,12 +66,8 @@ def import_predictions(store, task_id, path):
     rows=response['predictions']
     require(isinstance(rows,list) and all(isinstance(x,dict) for x in rows) and len(rows)==len(index)
             and {x.get('turn_id') for x in rows}==set(index), 'PREDICTION_ID_SET_MISMATCH')
-    fields={'turn_id','label','evidence','reason','outsourcing','insufficient_evidence','self_reported_confidence'}
     for row in rows:
-        require(set(row)==fields,'INVALID_PREDICTION_FIELDS')
-        label_check(row['label'],row['evidence'],index[row['turn_id']]['question'],row['insufficient_evidence'],row['reason'])
-        require(row['outsourcing'] in ['yes','no','uncertain'],'INVALID_OUTSOURCING')
-        finite_number(row['self_reported_confidence'],0,1)
+        validate_prediction(row, index[row['turn_id']])
     return store.put('predictions', {'task':task_id,'dataset':task['dataset'],'rubric':task['rubric'],
                                      'rows':sorted(rows,key=lambda x:x['turn_id']),'usage':usage,
                                      'confidence_status':'self_reported_uncalibrated'}, [task_id])
