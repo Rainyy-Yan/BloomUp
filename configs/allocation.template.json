@@ -1,0 +1,143 @@
+{
+  "term": "REPLACE_WITH_FROZEN_TERM",
+  "evidence_status": "real_pilot_estimate",
+  "alpha": 0.05,
+  "targets": null,
+  "budget_cny": null,
+  "max_combinations": 20000,
+  "parameter_sources": {
+    "required": "Replace with frozen frame, independent paired pilot, time/cost and policy evidence"
+  },
+  "strata": [
+    {
+      "name": "common",
+      "frame_size": 1,
+      "min_reviews": 1,
+      "pilot_confusion": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "pilot_prediction_na": 0,
+      "ai_unit_cny": null,
+      "double_review_unit_cny": null,
+      "adjudication_unit_cny": null,
+      "disagreement_rate": null,
+      "quality_floor": {
+        "six": 0,
+        "three": 0
+      },
+      "min_prediction_coverage": 0
+    },
+    {
+      "name": "rare_prespecified",
+      "frame_size": 1,
+      "min_reviews": 1,
+      "pilot_confusion": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "pilot_prediction_na": 0,
+      "ai_unit_cny": null,
+      "double_review_unit_cny": null,
+      "adjudication_unit_cny": null,
+      "disagreement_rate": null,
+      "quality_floor": {
+        "six": 0,
+        "three": 0
+      },
+      "min_prediction_coverage": 0
+    }
+  ]
+}

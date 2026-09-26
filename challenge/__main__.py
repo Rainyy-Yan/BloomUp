@@ -19,7 +19,7 @@ from .uncertainty import label_sensitivity
 
 
 def parser():
-    p=argparse.ArgumentParser(description='赛题一离线分析工作台；不调用模型，不生成正式成绩。')
+    p=argparse.ArgumentParser(description='赛题一可追溯分析工作台；默认离线，网络推理需显式启用。')
     p.add_argument('--root',default='local_state',help='状态目录，含内部数据，不得直接发布')
     subs=p.add_subparsers(dest='command',required=True)
     definitions={
@@ -27,18 +27,30 @@ def parser():
         'rubric-register':['file'], 'review-export':['dataset','rubric','pool','reviewer'],
         'review-import':['task','file'], 'adjudicate':['review_a','review_b','resolutions','actor'],
         'prediction-export':['dataset','rubric','model','prompt'], 'prediction-import':['task','file'],
+        'prediction-plan':['task','config'], 'prediction-run':['plan'],
+        'student-export':['metrics'],
+        'allocation-plan':['config'], 'allocation-demo':[],
+        'red-team':[], 'reproduce':[],
+        'probe-prepare':['model','prompt'], 'probe-report':['predictions'],
         'quality-evaluate':['predictions','gold','policy'], 'labels-freeze':['admission','rubric'],
         'metrics-compute':['labels','spec'], 'analysis-observed':['metrics'], 'analysis-sensitivity':['metrics'],
         'analysis-label-sensitivity':['metrics'],
         'analysis-causal':[], 'causal-panel-import':['file'], 'causal-audit':['panel','protocol'],
         'causal-report':['analysis'], 'causal-demo':[], 'causal-validate':[], 'causal-run':['file','protocol'],
-        'report-build':['metrics'], 'verify':['artifact'], 'status':[], 'demo':[]}
+        'report-build':['metrics'], 'verify':['artifact'], 'status':[], 'demo':[], 'inference-demo':[]}
     for name,keys in definitions.items():
         sub=subs.add_parser(name)
         for key in keys: sub.add_argument('--'+key.replace('_','-'),required=True)
         if name=='rubric-register': sub.add_argument('--frozen-by')
-        if name=='demo': sub.add_argument('--formula-version',choices=['legacy-v1','aiv-v2'],default='aiv-v2')
+        if name in ('demo','inference-demo'): sub.add_argument('--formula-version',choices=['legacy-v1','aiv-v2'],default='aiv-v2')
         if name=='prediction-export': sub.add_argument('--pool',choices=['development','audit','risk','all'],default='development')
+        if name=='prediction-run':
+            sub.add_argument('--execute', action='store_true')
+            sub.add_argument('--allow-network', action='store_true')
+            sub.add_argument('--retry-invalid', action='store_true')
+        if name=='student-export':
+            sub.add_argument('--enable-student-output', action='store_true')
+            sub.add_argument('--roster',help='受控匿名名册 JSON；不自动确认其正式性')
         if name=='labels-freeze':
             sub.add_argument('--gold',action='append',default=[])
             sub.add_argument('--predictions')
@@ -74,6 +86,39 @@ def dispatch(store,a):
     if command=='adjudicate': return adjudicate(store,a.review_a,a.review_b,read_json(a.resolutions),a.actor)
     if command=='prediction-export': return export_request(store,a.dataset,a.rubric,read_json(a.model),a.prompt,a.pool)
     if command=='prediction-import': return import_predictions(store,a.task,a.file)
+    if command=='student-export':
+        from .student_export import export_students
+        return export_students(store,a.metrics,a.enable_student_output,a.roster)
+    if command=='probe-prepare':
+        from .probes import prepare_probes
+        return prepare_probes(store,read_json(a.model),a.prompt)
+    if command=='probe-report':
+        from .probes import summarize_probes
+        result=summarize_probes(store,a.predictions)
+        artifact=store.put('model_probe',result,[a.predictions])
+        return dict(artifact_id=artifact,**result)
+    if command in ('allocation-plan','allocation-demo'):
+        from .allocation import solve_allocation, allocation_scenarios
+        if command=='allocation-plan':
+            spec=read_json(a.config)
+            result=solve_allocation(spec)
+            artifact=store.put('allocation',result,config=spec)
+            return dict(artifact_id=artifact,**result)
+        scenarios=allocation_scenarios()
+        artifact=store.put('allocation_demo',dict(synthetic=True,scenarios=scenarios))
+        return dict(artifact_id=artifact,synthetic=True,scenarios=scenarios)
+    if command=='red-team':
+        from .redteam import run_attacks
+        result=run_attacks()
+        artifact=store.put('red_team',result)
+        return dict(artifact_id=artifact,**result)
+    if command=='reproduce':
+        from .reproduce import run_reproduction
+        return run_reproduction(store)
+    if command in ('prediction-plan', 'prediction-run'):
+        from .inference import create_plan, run_plan
+        if command=='prediction-plan': return {'plan':create_plan(store,a.task,read_json(a.config))}
+        return run_plan(store,a.plan,a.execute,a.allow_network,a.retry_invalid)
     if command=='quality-evaluate': return evaluate_quality(store,a.predictions,a.gold,read_json(a.policy))
     if command=='labels-freeze': return freeze_labels(store,a.admission,a.rubric,a.gold,a.predictions,a.quality)
     if command=='metrics-compute': return compute_metrics(store,a.labels,read_json(a.spec))
@@ -106,10 +151,10 @@ def dispatch(store,a):
             value=store.get(path.stem)
             kind=value['artifact_type']
             counts[kind]=counts.get(kind,0)+1
-        return {'artifact_counts':counts,'mode':'offline_only','formal_scoring_enabled':False}
-    if command=='demo':
+        return {'artifact_counts':counts,'mode':'offline_default_network_opt_in','formal_scoring_enabled':False}
+    if command in ('demo','inference-demo'):
         from .demo import run_demo
-        return run_demo(store.root/'synthetic_demo'/uuid.uuid4().hex, a.formula_version)
+        return run_demo(store.root/'synthetic_demo'/uuid.uuid4().hex, a.formula_version, command=='inference-demo')
     raise ContractError('UNKNOWN_COMMAND')
 
 
@@ -130,6 +175,15 @@ def main(argv=None):
         if args.command=='causal-run' and result['analysis_status']=='blocked':
             receipt.update(status='blocked',error='CAUSAL_NOT_IDENTIFIED: see audit and report')
             code=2
+        if args.command=='prediction-run' and result['status'] not in ('planned','completed'):
+            receipt.update(status='blocked',error=result.get('error_code',result['status']))
+            code=2
+        if args.command=='allocation-plan' and result['status'] in ('blocked','infeasible','search_limit'):
+            receipt.update(status='blocked',error='ALLOCATION_NOT_SOLVED: inspect blocked_reasons')
+            code=2
+        if args.command=='reproduce' and result['status']=='tests_failed':
+            receipt.update(status='failed',error='REPRODUCTION_TESTS_FAILED')
+            code=1
     except ContractError as exc:
         receipt.update(status='blocked',error=str(exc))
         code=2

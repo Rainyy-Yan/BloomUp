@@ -29,9 +29,7 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Install runtime dependencies
         run: python -m pip install -r requirements.txt
-      - name: Run synthetic regression suite
-        run: python -m unittest discover -v
-      - name: Run the complete offline demo
-        run: python -m challenge --root .ci-state demo
+      - name: Run tests and the complete offline reproduction
+        run: python -m challenge --root .ci-state/r reproduce
       - name: Ensure tracked inputs were not modified
         run: git diff --exit-code

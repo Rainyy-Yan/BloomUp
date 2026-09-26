@@ -38,9 +38,14 @@ class LegacyCompatibilityTests(unittest.TestCase):
     def test_repository_ignores_private_workflow_inputs(self):
         paths=['.local/pseudonym.key','local_state/artifacts/labels/example.json','runs/private/turns.jsonl',
                'configs/private.local.json','data/ground_truth.csv','.env.production','tools/apply_annotations.py',
-               'docs/real_student_report.md']
-        result=subprocess.run(['git','check-ignore','-z','--stdin'],input=('\0'.join(paths)+'\0').encode(),cwd=ROOT,
-                              capture_output=True,check=False)
+               'docs/real_student_report.md','inference/ledger.json','exports/private/result.csv']
+        # Source archives have no .git. Verify the shipped rules in an isolated repository.
+        with tempfile.TemporaryDirectory() as root:
+            (Path(root)/'.gitignore').write_bytes((ROOT/'.gitignore').read_bytes())
+            subprocess.run(['git','init','--quiet'],cwd=root,capture_output=True,check=True)
+            result=subprocess.run(['git','-c',f'core.excludesFile={os.devnull}','check-ignore','-z','--stdin'],
+                                  input=('\0'.join(paths)+'\0').encode(),cwd=root,capture_output=True,check=False)
+        self.assertEqual(result.returncode,0)
         self.assertEqual(set(result.stdout.decode().strip('\0').split('\0')),set(paths))
 
     def test_public_config_has_no_machine_source_path(self):

@@ -41,7 +41,7 @@ def fill_synthetic_review(path, levels):
     write_csv(path,rows,IMMUTABLE+EDITABLE)
 
 
-def run_demo(root, formula_version='legacy-v1'):
+def run_demo(root, formula_version='legacy-v1', use_runner=False):
     require(formula_version in ('legacy-v1', 'aiv-v2'), 'UNKNOWN_FORMULA_VERSION')
     store=ArtifactStore(root)
     dataset=synthetic_dataset(store)
@@ -65,6 +65,13 @@ def run_demo(root, formula_version='legacy-v1'):
     response=Path(task['file']).with_name('synthetic_response.json')
     write_json(response,{'task_id':task['task_id'],'predictions':predictions,'usage':None})
     prediction=import_predictions(store,task['task_id'],response)
+    inference = None
+    if use_runner:
+        from .inference import create_plan, run_plan
+        plan = create_plan(store, task['task_id'], read_json(project/'configs/inference.synthetic.json'))
+        inference = run_plan(store, plan, execute=True)
+        require(inference['status'] == 'completed', 'SYNTHETIC_INFERENCE_FAILED')
+        prediction = inference['predictions']
     quality=evaluate_quality(store,prediction,gold,{'min_n':2,'min_coverage':1,'min_linear_kappa':.6,
                                                   'audit_unseen':True,'attested_by':'SYNTHETIC-TEST-NOT-REAL-ATTESTATION'})
     labels=freeze_labels(store,admission,rubric,[gold],prediction,quality)
@@ -79,5 +86,7 @@ def run_demo(root, formula_version='legacy-v1'):
     report=build_report(store,metrics,observed,weights,noise)
     result=dict(synthetic=True,dataset=dataset,rubric=rubric,admission=admission,gold=gold,predictions=prediction,
                 quality=quality,labels=labels,metrics=metrics,observed=observed,sensitivity=weights,label_sensitivity=noise,report=report)
+    if inference is not None:
+        result['inference'] = inference
     write_json(store.root/'demo_result.json',result)
     return result

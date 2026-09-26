@@ -1,0 +1,14 @@
+{
+  "provider": "minimax",
+  "endpoint": "https://api.minimaxi.com/v1/responses",
+  "api_key_env": "BLOOMUP_MINIMAX_API_KEY",
+  "budget_id": "development-pilot",
+  "budget_cny": null,
+  "prior_spend_cny": null,
+  "input_cny_per_million": null,
+  "output_cny_per_million": null,
+  "price_basis": "Fill verified pricing source/date and conservative billing assumptions before use",
+  "max_requests": 12,
+  "max_attempts": 2,
+  "timeout_seconds": 60
+}
