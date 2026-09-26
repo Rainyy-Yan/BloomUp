@@ -15,7 +15,12 @@ import statistics
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from build_student_mapping import ROOT, build_mapping
+if __package__:
+    from .build_student_mapping import ROOT, build_mapping
+    from .label_noise import assumed_neighbour_kernel, percentile
+else:
+    from build_student_mapping import ROOT, build_mapping
+    from label_noise import assumed_neighbour_kernel, percentile
 
 
 DATA = ROOT / "data"
@@ -103,27 +108,9 @@ def load_inputs() -> tuple[dict, dict]:
     return records, turns
 
 
-def percentile(values: list[float], probability: float) -> float:
-    ordered = sorted(values)
-    position = (len(ordered) - 1) * probability
-    low, high = math.floor(position), math.ceil(position)
-    return ordered[low] + (position - low) * (ordered[high] - ordered[low])
-
-
 def neighbour_kernel(labels: list[int]) -> dict[int, tuple[tuple[int, float], ...]]:
     """Prevalence-shaped ASSUMED kernel; frequencies are not transitions."""
-    counts = Counter(labels)
-    kernel = {}
-    for level in range(1, 7):
-        adjacent = [k for k in (level - 1, level + 1) if 1 <= k <= 6]
-        weights = [counts[k] + 0.5 for k in adjacent]  # Jeffreys smoothing.
-        total = sum(weights)
-        row = [(level, 1.0 - ADJACENT_ERROR_MASS)]
-        row += [(k, ADJACENT_ERROR_MASS * w / total) for k, w in zip(adjacent, weights)]
-        if not math.isclose(sum(p for _, p in row), 1.0, abs_tol=1e-12):
-            raise AssertionError("Invalid sensitivity kernel")
-        kernel[level] = tuple(row)
-    return kernel
+    return assumed_neighbour_kernel(labels, ADJACENT_ERROR_MASS)
 
 
 def perturb(level: int, kernel: dict, rng: random.Random) -> int:

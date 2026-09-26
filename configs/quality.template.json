@@ -1,0 +1,7 @@
+{
+  "min_n": 30,
+  "min_coverage": 0.9,
+  "min_linear_kappa": 0.6,
+  "audit_unseen": false,
+  "attested_by": ""
+}

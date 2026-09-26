@@ -1,0 +1,5 @@
+{
+  "name": "REPLACE_WITH_ACTUAL_MODEL",
+  "revision": "REPLACE_WITH_PINNED_REVISION",
+  "parameters": {"temperature": 0, "max_output_tokens": 4096}
+}

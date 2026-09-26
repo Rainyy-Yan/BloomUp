@@ -16,7 +16,10 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
-from prepare_qa_text import extract_questions
+if __package__:
+    from .prepare_qa_text import extract_questions
+else:
+    from prepare_qa_text import extract_questions
 
 
 ROOT = Path(__file__).resolve().parents[1]
