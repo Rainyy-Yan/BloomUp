@@ -7,6 +7,12 @@ import unittest
 from openpyxl import Workbook
 
 from challenge.pipeline import ROOT, _csv_value, prepare, validate_annotation
+from challenge.storage import ArtifactStore
+from challenge.ingest import register_run, admit_dataset
+from challenge.annotation.reviews import register_rubric
+from challenge.analysis import freeze_labels, compute_metrics
+from challenge.reporting import build_report
+from challenge.contracts import ContractError, file_hash
 
 
 def save_book(path, sheets):
@@ -55,12 +61,73 @@ class PreparationTests(unittest.TestCase):
             'outside_provisional_window': 1, 'not_in_primary_roster': 1, 'different_channel': 1})
         self.assertFalse(result['formal_scores_computed'])
         run = self.project/'runs'/result['run_id']
-        with (run/'student_inventory_NOT_SCORED.csv').open(encoding='utf-8-sig') as stream:
-            rows = list(csv.DictReader(stream))
-        self.assertEqual(len(rows), 3)
-        self.assertTrue(all(row['aiv'] == '' for row in rows))
+        self.assertFalse((run/'student_inventory_NOT_SCORED.csv').exists())
+        for path in run.rglob('*.csv'):
+            with path.open(encoding='utf-8-sig', newline='') as stream:
+                self.assertNotIn('student_key', csv.DictReader(stream).fieldnames, str(path))
+        self.assertEqual(result['population_counts'], {'fall': 1, 'spring': 2})
         text = (run/'private/turns.jsonl').read_text(encoding='utf-8')
         self.assertNotIn('"student_key": "001"', text)
+
+    def test_import_preserves_population_counts_without_roster_only_identities(self):
+        result = self.run_prepare()
+        run = self.project/'runs'/result['run_id']
+        store = ArtifactStore(self.project/'state')
+        dataset_id = register_run(store, run)
+        data = store.get(dataset_id)['payload']
+        self.assertEqual(len(data['inventory']), 2)
+        self.assertEqual(data['population_counts'], {'fall': 1, 'spring': 2})
+        admission = admit_dataset(store, dataset_id, {'dataset_id':dataset_id, 'reviewer_id':'test',
+            'record_decisions':[{'record_id':r['record_id'], 'status':'accepted', 'reason':'synthetic review'}
+                                for r in data['records']]})
+        rubric = register_rubric(store, ROOT/'docs/标注手册_v1.md', 'test')
+        labels = freeze_labels(store, admission, rubric, [])
+        metrics = compute_metrics(store, labels, json.loads((ROOT/'configs/metrics.v1.json').read_text()))
+        report = Path(build_report(store, metrics)['markdown']).read_text(encoding='utf-8')
+        self.assertIn('来源清单人数', report)
+        self.assertIn('|spring|2|1|0|', report)
+        self.assertIsNone(next(r for r in store.get(metrics)['payload']['rows'] if r['term']=='spring')['aiv'])
+        # Aggregate denominators are part of the verified input, not editable report settings.
+        (run/'readiness.json').write_text('{}', encoding='utf-8')
+        with self.assertRaisesRegex(ContractError, 'PREPARED_INPUT_CHANGED'):
+            register_run(store, run)
+
+    def test_old_preparation_uses_verified_counts_without_reading_student_csv(self):
+        result = self.run_prepare()
+        run = self.project/'runs'/result['run_id']
+        readiness = json.loads((run/'readiness.json').read_text(encoding='utf-8'))
+        del readiness['population_counts']
+        (run/'readiness.json').write_text(json.dumps(readiness), encoding='utf-8')
+        manifest = json.loads((run/'generated_manifest.json').read_text(encoding='utf-8'))
+        for entry in manifest:
+            if entry['path'] == 'readiness.json': entry['sha256'] = file_hash(run/'readiness.json')
+        (run/'generated_manifest.json').write_text(json.dumps(manifest), encoding='utf-8')
+        (run/'student_inventory_NOT_SCORED.csv').write_text('unread legacy file', encoding='utf-8')
+        store = ArtifactStore(self.project/'state')
+        data = store.get(register_run(store, run))['payload']
+        self.assertEqual(data['population_counts'], {'fall':1,'spring':2})
+        self.assertEqual(len(data['inventory']), 2)
+
+    def test_empty_term_is_visible_in_report_and_runtime_manifest_is_complete(self):
+        self.config.update(spring_start_inclusive='2026-04-01', spring_end_exclusive='2026-05-01')
+        self.config_path.write_text(json.dumps(self.config), encoding='utf-8')
+        result = self.run_prepare()
+        run = self.project/'runs'/result['run_id']
+        store = ArtifactStore(self.project/'state')
+        dataset_id = register_run(store, run)
+        data = store.get(dataset_id)['payload']
+        admission = admit_dataset(store, dataset_id, {'dataset_id':dataset_id,'reviewer_id':'test',
+            'record_decisions':[{'record_id':r['record_id'],'status':'accepted','reason':'synthetic review'}
+                                for r in data['records']]})
+        rubric = register_rubric(store, ROOT/'docs/标注手册_v1.md', 'test')
+        labels = freeze_labels(store, admission, rubric, [])
+        metrics = compute_metrics(store, labels, json.loads((ROOT/'configs/metrics.v1.json').read_text()))
+        report = Path(build_report(store, metrics)['markdown']).read_text(encoding='utf-8')
+        self.assertIn('|spring|2|0|0|0|0|0|缺失|', report)
+        manifest = json.loads((run/'code_manifest.json').read_text(encoding='utf-8'))
+        hashes = {row['path']:row['sha256'] for row in manifest}
+        for name in ['challenge/pipeline.py','tools/label_noise.py','run_workbench.ps1','run_workbench.sh','requirements.txt']:
+            self.assertEqual(hashes[name], file_hash(ROOT/name))
 
     def test_rerun_preserves_work_and_ids_and_source_change_stops(self):
         first = self.run_prepare()

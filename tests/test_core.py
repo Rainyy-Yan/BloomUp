@@ -1,6 +1,8 @@
 import unittest
 
-from challenge.core import asymmetric_dhi, make_splits, metrics, parse_dialogue
+from challenge.core import make_splits, parse_dialogue
+from challenge.metrics import student_metrics
+from challenge.scoring import normalized_dhi
 
 
 Q = [0.10, 0.20, 0.25, 0.25, 0.15, 0.05]
@@ -42,38 +44,45 @@ class ParseTests(unittest.TestCase):
 
 
 class MetricTests(unittest.TestCase):
+    def score(self, seq, weights=W):
+        turns = [dict(term='t', student_key='s', record_id='r', turn_index=i, turn_id=str(i), agent_id=None)
+                 for i in range(1, len(seq)+1)]
+        return student_metrics(turns, {str(i):v for i,v in enumerate(seq,1)}, Q, weights)
+
     def test_rise_fall_and_cycle(self):
         for seq, expected in [([1, 6], 1.0), ([6, 1], 0.0), ([2, 4, 2], 0.5)]:
             with self.subTest(seq=seq):
-                self.assertAlmostEqual(metrics(seq, [seq], Q, W)['ctq'], expected)
+                self.assertAlmostEqual(self.score(seq)[0]['ctq'], expected)
 
     def test_single_turn_is_missing_and_not_zero(self):
-        result = metrics([4], [[4]], Q, W)
+        result = self.score([4])[0]
         self.assertIsNone(result['ctq'])
         self.assertIsNone(result['aiv'])
-        self.assertAlmostEqual(result['aiv_upper'] - result['aiv_lower'], 30)
+        self.assertAlmostEqual(result['identification_bounds'][1] - result['identification_bounds'][0], 30)
 
     def test_empty_student_has_no_score(self):
-        result = metrics([], [], Q, W)
+        self.assertEqual(self.score([]), [])
+        result = self.score([None])[0]
         self.assertIsNone(result['hot'])
-        self.assertIsNone(result['aiv_lower'])
+        self.assertIsNone(result['aiv'])
+        self.assertIsNone(result['identification_bounds'])
 
     def test_invalid_labels_and_weights_fail(self):
         for labels, weights in [([0], W), ([7], W), ([True], W), ([1], [-1, 1, 1]), ([1], [0.2, 0.2, 0.2])]:
             with self.subTest(labels=labels, weights=weights):
                 with self.assertRaises(ValueError):
-                    metrics(labels, [labels], Q, weights)
+                    self.score(labels, weights)
 
-    def test_conversation_labels_must_reconcile(self):
-        with self.assertRaises(ValueError):
-            metrics([1, 6], [[1, 1]], Q, W)
+    def test_labels_must_belong_to_known_turns(self):
+        with self.assertRaisesRegex(ValueError, 'UNKNOWN_LABEL_ID'):
+            student_metrics([], {'unknown': 6}, Q, W)
 
     def test_asymmetric_dhi_reference_and_vertices(self):
-        self.assertAlmostEqual(asymmetric_dhi(Q, Q, [1, 1, 1, 2, 2, 2], [2, 2, 2, 1, 1, 1]), 1)
+        self.assertAlmostEqual(normalized_dhi(Q, Q, [1, 1, 1, 2, 2, 2], [2, 2, 2, 1, 1, 1]), 1)
         values = []
         for i in range(6):
             p = [int(j == i) for j in range(6)]
-            values.append(asymmetric_dhi(p, Q, [1, 1, 1, 2, 2, 2], [2, 2, 2, 1, 1, 1]))
+            values.append(normalized_dhi(p, Q, [1, 1, 1, 2, 2, 2], [2, 2, 2, 1, 1, 1]))
         self.assertAlmostEqual(min(values), 0)
         self.assertTrue(all(0 <= x <= 1 for x in values))
 

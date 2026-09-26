@@ -1,6 +1,6 @@
 """Analysis label snapshots and conservative descriptive scoring."""
 
-from collections import Counter
+from collections import Counter, defaultdict
 
 from .contracts import require
 from .metrics import calculate_students
@@ -71,6 +71,7 @@ def compute_metrics(store, labels_id, spec):
                                 aiv_contributions={k:None for k in ('hot','ctq','dhi','mab')},
                                 bounds_conditioning=None)
     return store.put('metrics', {'dataset':labels['dataset'],'labels':labels_id,'spec':spec,'formula_version':version,
+                                'population_counts':dataset.get('population_counts', dict(Counter(s['term'] for s in dataset['inventory']))),
                                 'rows':sorted(rows,key=lambda x:(x['term'],x['student_key'])),
                                 'origins':labels['origins'],'synthetic':dataset['synthetic'],
                                 'scope_status':labels['scope_status'],'analysis_status':'exploratory','claim_type':'descriptive',
@@ -93,11 +94,18 @@ def sensitivity(store, metrics_id):
         for multiplier in [.9,1.1]:
             weights = [value*(multiplier if j==i else 1) for j,value in enumerate(base)]
             scenarios[f'w{i+1}_x{multiplier}'] = [w/sum(weights) for w in weights]
-    eligible = [r for r in metric['rows'] if r['aiv'] is not None]
+    by_term = defaultdict(list)
+    for row in metric['rows']:
+        by_term[row['term']].append(row)
+    for term in metric.get('population_counts', {}):
+        by_term.setdefault(term, [])
     results = []
-    for name, weights in scenarios.items():
-        values = [100*sum(w*r[k] for w,k in zip(weights,['hot','ctq','dhi'])) for r in eligible]
-        results.append({'scenario':name,'weights':weights,'students':len(values),'mean_aiv':sum(values)/len(values) if values else None})
+    for term, rows in sorted(by_term.items()):
+        eligible = [r for r in rows if r['aiv'] is not None]
+        for name, weights in scenarios.items():
+            values = [100*sum(w*r[k] for w,k in zip(weights,['hot','ctq','dhi'])) for r in eligible]
+            results.append({'term':term,'scenario':name,'weights':weights,'students':len(values),
+                            'mean_aiv':sum(values)/len(values) if values else None})
     return store.put('sensitivity', {'dataset':metric['dataset'],'metrics':metrics_id,'rows':results,
-                                    'claim_type':'descriptive','limits':['Weight sensitivity only; same available-score students.',
+                                    'claim_type':'descriptive','limits':['Within-term weight sensitivity only; same available-score students in each term.',
                                                                       'Not label-error uncertainty or reference-distribution sensitivity.']},[metrics_id])
