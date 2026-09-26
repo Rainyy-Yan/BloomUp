@@ -74,3 +74,57 @@ DOCX 中还包含大量嵌入图片；初次核验没有全面 OCR 或追踪外�
 但页面只提供所检查视图中的聚合结果：没有学生级独立测量、前后测时点、比较组或处理分配。当前考核标准还包含掌握度、学习进度等过程项，未证实页面均分的历史计算公式和独立性。两期班级构成不同，秋季视图包含测试班；直接相减均分不能识别 AI 净效应，也不能把班级平均值复制给每名学生后计算置信区间。
 
 下一项有效输入应是与该平台版本对应的脱敏测量明细、成绩字段定义/计算规则、测量时间、正式班级范围及处理设计，而不是继续对同一组页面均分套用新估计器。新来源未改变原始日志分母或 `effect=null` 状态。页面入口与精确观测值留受控本地，公开文件只记录必要聚合范围与方法判断。
+
+## 可行性任务的逐项验收（2026-09-27）
+
+#9 的原验收明确允许证据不足时交付缺失说明和最小追加数据，并要求把可行性任务完成与真实 B 实证完成分开。以下矩阵验收前者；真实净学习效应、适用区间和异质性仍未取得，继续由总规划 #15 的 B 实证条款追踪。不把关单理解为研究目标已实现。
+
+### 四类输入及其允许输出
+
+|输入|合同与版本|允许输出|禁止替代|
+|---|---|---|---|
+|真实交互日志|scope-working-v1；1238候选记录/3359候选轮；development60 与解析35参考分开，重合1轮|覆盖、缺失、准入和可用端点的探索描述|学生独立学习成绩、未经确认的总体效应|
+|历史 T3 标签|旧“15段、14人、12/14”未定位同版原件；五个历史指定路径的当前文件及已获取 Git 历史均无命中|记录未核实及查找范围，保持正式表空缺|将新35轮、同数量反例或旧文字叙述当成原件|
+|合成 causal-panel-v1|明确 synthetic=true；给定处理、前后测、基线分层和机制|已知效应复算、审查阻断和假设失效反例|真实学习净效应或真实观察表的填充值|
+|未来独立学习数据|目前未取得；先核对上文最小字段，再冻结适用设计|证据支持且合同适用后，才输出条件 ATT、推断和预设异质性|仅重命名日志字段、填写 assumed 或复制班级均分进入面板|
+
+### 真实观察与因果结果状态
+
+|样本/目标|学期内学生及端点分母|当前结果|区间、权重和随机数约定|
+|---|---|---|---|
+|development60 观察探索，秋|21个学生、304候选轮、30已审轮；原始端点配对0|Δ_obs 缺失，不记零；非正式总体|无可重抽样端点，不运行 bootstrap；不填写随机种子造成已运行错觉|
+|development60 观察探索，春|16个学生、150候选轮、30已审轮；原始端点配对0|同上|同上|
+|解析35轮完整参考，秋/春分别处理|共14学生、124候选轮；各期仅1名学生有1个完整原始端点对|仅本地个案诊断；公共表不发布单人变化值；非正式总体|学生等权的定义保留；没有总体CI，不运行bootstrap，12种歧义情景另列|
+|正式观察总体|正式范围、有效全量标签及端点覆盖尚未冻结|缺失，缺口不是估计值|实现默认 seed=20260925、1000次；有足够数据后按协议记录实际值，不将默认参数当作本轮运行结果|
+|真实 AI 净学习 ATT|独立结果、处理比较与设计证据未齐|effect=null；未识别，既无真实点估计也无真实CI|不运行真实因果估计，无实际随机种子或有效重复次数|
+
+观察实现先在学生内汇总原始首末 HOT 差，再以学生等权求学期均值；不以内部非空轮次替换缺失端点。区间在学期内重抽精确关联组，至少五组才允许输出百分位区间。它条件于准入和端点可用者，不包含标注误差或选择偏差，也不是概率抽样的总体区间，更不是因果区间。当前上述真实探索没有足够关联组，未生成区间。不得将开发60和解析35相加为独立样本，也不将两期当作配对面板。
+
+### 合成证据另表
+
+以下读取自源码 d51e54b 的既有新目录复算产物，2026-09-27 用当前 `ArtifactStore.verify_tree` 重新核验依赖树；并非本轮再次进行模拟。
+
+|已知机制|合成估计|合成95%区间|运行参数与出处|
+|---|---:|---|---|
+|给定处理效应0|0.0|[-0.566912, 0.501384]|seed=2045，300次；causal_effect-db30c22a…；synthetic_validation|
+|给定处理效应5|5.0|[4.433088, 5.501384]|seed=2045，300次；causal_effect-babe3b0e…；synthetic_validation|
+
+这两行是单次合成样本区间，不是重复模拟覆盖率，也不是学生观察值。既有百次 Monte Carlo 结果仍仅属于 `causal-b.md` 标识的旧模拟协议，不与此300次重抽样混算。真实条件不具备时不得拿这两行补齐真实结果表。
+
+### 复用测试覆盖矩阵
+
+|需要证明的软件行为|当前测试（tests/ 下）|断言范围与限制|
+|---|---|---|
+|effect=null、具体原因与可审查报告|test_causal_workbench.py::test_workflow_success_and_blocked_results_are_traceable；test_cli_run_blocked_still_writes_reviewable_report|独立结果条件失败时 effect 为 None，报告保留 NO_INDEPENDENT_OUTCOME；CLI 退出2且报告存在|
+|已知效应和构成校正|test_causal.py::test_known_effect_corrects_composition_bias|调整估计5、未调整7，保留预设异质性及偏差界；仅给定合成机制|
+|零效应、确定性及合成标记|test_zero_effect_reproducible_and_aggregate_only_report|估计0、固定seed复现同产物、报告标合成且不泄漏合成私有键|
+|假设违背不会被结构审查自动识别|test_false_parallel_trend_assumption_is_not_detected_by_schema|真效应0但额外趋势4，估计4；保留 synthetic_validation，明确这是识别失败反例|
+|缺对照/缺测/时序/无支持|test_missing_control_and_outcome_block_instead_of_complete_case；test_time_leakage_and_unverified_assumptions_block；test_unsupported_strata_and_mixed_cluster_block|具体阻断原因存在；不静默完整案例删样或裁剪权重|
+|少簇、簇复制、重抽样失去支持|test_small_number_of_assignment_units_has_no_inference；test_cluster_duplication_does_not_invent_independent_observations；test_lost_bootstrap_support_suppresses_interval|不凭重复学生增加独立单位；不足或支持失败时CI为None|
+|CLI 旧入口与完整演示|test_cli_causal_demo_and_legacy_guard|合成演示退出0；未具备识别条件的旧入口退出2|
+
+除首行标出的 workbench 文件外，上述简写测试均在 test_causal.py。实际测试内容已读取，矩阵不是根据函数名推测。当前 main `5d79a674e2b1c6ab60b8ffc60cf451856977f504` 的[三平台 CI](https://github.com/Rainyy-Yan/BloomUp/actions/runs/36262779005)全部通过，执行 `python -m challenge --root .ci-state/r reproduce`，其内部调用 `python -m unittest discover -v`。本次文档验收未再重复全套测试。
+
+当前已跟踪 challenge/tools/tests 与 d51e54b 无 Git 内容差异。旧解压目录实现字节哈希为 `270e9e2bcd22f92c62fe6feb0c66a0c00dc6e179e227d21538a184c970d83150`，当前工作区为 `204cf9223840bff8906bd9255e7518a87bf57039e5704aed99ed8224acf7c050`；逐文件对比仅 tools/prepare_qa_text.py 的换行表示不同，规范化文本相同，不伪称二者字节哈希相同。依赖树核验命令退出0；准确全长产物ID、来源版本和核验回执留本地。现有覆盖没有发现需要为 #9 新增估计器或重复测试的具体缺口。
+
+因此 #9 可按原“证据不足”验收分支完成可行性与工程证据任务。历史出处未核实、正式观察表缺失和真实 B 实证未完成的事实仍保留，分别由 #5/#12 及 #15 继续追踪；没有取消赛题的净效应要求。
