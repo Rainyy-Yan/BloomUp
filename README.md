@@ -20,6 +20,10 @@ Windows也可用 `./run_workbench.ps1 demo`，通过 `-PythonPath`指定已有�
 
 综合评价现有显式版本 `aiv-v2`：HOT、原始首末净变化 CTQ、归一化对称/非对称 DHI、对数 MAB，支持三种合成方案、权重敏感性与缺失指标条件外界。公式、证明及限制见 [数学规范](docs/aiv-mathematics.md)。CLI 演示默认 v2；旧公式可用 `python -m challenge demo --formula-version legacy-v1` 复算。真实配置模板未填写 Agent 目录，MAB 保持缺失，不自动生成完整 AIV。
 
+B 模块首版提供独立面板导入、识别条件审查、分层双重稳健 DID、整簇 bootstrap、探索性分层和固定趋势偏差界。运行 `python -m challenge causal-demo` 查看两份合成研究报告，运行 `python -m challenge causal-validate` 查看已知效应与违反平行趋势的模拟诊断。输入合同、公式和限制见 [B 模块操作说明](docs/causal-b.md)。已有日志不自动成为因果面板，审查通过只表示记录和声明满足合同，不证明因果假设。
+
+已有面板可用 `causal-run --file local_state/panel.json --protocol configs/causal.local.json` 一次完成审查、条件估计与报告。报告包含基线加权前后平衡、重叠、有效样本量和簇权重集中度；阻断时保留原因报告并返回退出码 2。模块职责与产物依赖见 [B 模块架构](docs/causal-b-architecture.md)。核心流程不需要大模型或网络连接。
+
 ```mermaid
 flowchart LR
     A[授权附件与候选解析] --> B[版本数据与解析准入]
@@ -73,4 +77,4 @@ python tools/error_propagation.py
 
 每个小任务从稳定分支建自己的分支，提交前明确列出文件、检查 `git diff --cached`，经另一人审查后再合并。不要让两人同时改同一份人工标签。提交代码时可用明确路径的 `git add -- <文件>`，不使用 `git add -A` 或自动全量上传。通过PR协作，不直接合并未经审查的研究变更。
 
-`data/`、`runs/`、`.local/`、`local_state/`、本地配置、CSV/JSONL、密钥及研究报告均默认忽略。`.gitignore`不代替提交审查。新流程中的原预测与最终采用标签分别保存；缺失保持为空，不出精确名次；`analysis-causal`明确阻断。当前没有网络推理适配器，报告仅在本地生成，不自动发布。
+`data/`、`runs/`、`.local/`、`local_state/`、本地配置、CSV/JSONL、密钥及研究报告均默认忽略。`.gitignore`不代替提交审查。新流程中的原预测与最终采用标签分别保存；缺失保持为空，不出精确名次；`analysis-causal`在缺少通过审查的独立面板时明确阻断。当前没有网络推理适配器，报告仅在本地生成，不自动发布。
