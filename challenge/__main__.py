@@ -48,7 +48,9 @@ def parser():
             sub.add_argument('--execute', action='store_true')
             sub.add_argument('--allow-network', action='store_true')
             sub.add_argument('--retry-invalid', action='store_true')
-        if name=='student-export': sub.add_argument('--enable-student-output', action='store_true')
+        if name=='student-export':
+            sub.add_argument('--enable-student-output', action='store_true')
+            sub.add_argument('--roster',help='受控匿名名册 JSON；不自动确认其正式性')
         if name=='labels-freeze':
             sub.add_argument('--gold',action='append',default=[])
             sub.add_argument('--predictions')
@@ -86,7 +88,7 @@ def dispatch(store,a):
     if command=='prediction-import': return import_predictions(store,a.task,a.file)
     if command=='student-export':
         from .student_export import export_students
-        return export_students(store,a.metrics,a.enable_student_output)
+        return export_students(store,a.metrics,a.enable_student_output,a.roster)
     if command=='probe-prepare':
         from .probes import prepare_probes
         return prepare_probes(store,read_json(a.model),a.prompt)
