@@ -28,7 +28,7 @@ def parser():
         'review-import':['task','file'], 'adjudicate':['review_a','review_b','resolutions','actor'],
         'prediction-export':['dataset','rubric','model','prompt'], 'prediction-import':['task','file'],
         'ai-reference-import':['task','file','protocol'], 'ai-reference-compare':['predictions','reference'],
-        'prediction-plan':['task','config'], 'prediction-run':['plan'],
+        'prediction-plan':['task','config'], 'prediction-run':['plan'], 'prediction-snapshot':['plan'],
         'student-export':['metrics'],
         'allocation-plan':['config'], 'allocation-demo':[],
         'red-team':[], 'reproduce':[],
@@ -49,6 +49,8 @@ def parser():
             sub.add_argument('--execute', action='store_true')
             sub.add_argument('--allow-network', action='store_true')
             sub.add_argument('--retry-invalid', action='store_true')
+            sub.add_argument('--continue-on-invalid', action='store_true',
+                             help='保留已知输出合同失败并继续；费用/传输状态未知时仍停止')
         if name=='student-export':
             sub.add_argument('--enable-student-output', action='store_true')
             sub.add_argument('--roster',help='受控匿名名册 JSON；不自动确认其正式性')
@@ -123,7 +125,10 @@ def dispatch(store,a):
     if command in ('prediction-plan', 'prediction-run'):
         from .inference import create_plan, run_plan
         if command=='prediction-plan': return {'plan':create_plan(store,a.task,read_json(a.config))}
-        return run_plan(store,a.plan,a.execute,a.allow_network,a.retry_invalid)
+        return run_plan(store,a.plan,a.execute,a.allow_network,a.retry_invalid,a.continue_on_invalid)
+    if command=='prediction-snapshot':
+        from .inference import snapshot_plan
+        return snapshot_plan(store,a.plan)
     if command=='quality-evaluate': return evaluate_quality(store,a.predictions,a.gold,read_json(a.policy))
     if command=='labels-freeze': return freeze_labels(store,a.admission,a.rubric,a.gold,a.predictions,a.quality)
     if command=='metrics-compute': return compute_metrics(store,a.labels,read_json(a.spec))

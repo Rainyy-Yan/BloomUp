@@ -5,6 +5,7 @@ Success enters the existing prediction importer, never the human gold pipeline.
 """
 
 from contextlib import contextmanager
+from collections import Counter
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 import json
@@ -164,7 +165,45 @@ def _verify_cache(store, ledger):
                 require(path.is_file() and file_hash(path) == attempt['response_hash'], 'CACHE_HASH_MISMATCH')
 
 
-def run_plan(store, plan_id, execute=False, allow_network=False, retry_invalid=False):
+def snapshot_plan(store, plan_id):
+    """Read validated cached rows without retrying or resolving unknown charges."""
+    store.verify_tree(plan_id)
+    plan = store.get(plan_id, 'inference_plan')['payload']
+    task = store.get(plan['task'], 'prediction_task')['payload']
+    index = {row['turn_id']:row for row in task['rows']}
+    root = store.root/'inference'
+    with runner_lock(root):
+        ledger = read_json(root/'ledger.json')
+        require(ledger.get('checksum') == fingerprint({k:v for k,v in ledger.items() if k != 'checksum'}),
+                'LEDGER_CHECKSUM_MISMATCH')
+        require(ledger.get('version') == 1, 'LEDGER_VERSION_MISMATCH')
+        require(plan_id in ledger['runs'], 'PLAN_NOT_EXECUTED')
+        _verify_cache(store, ledger)
+        attempts = ledger['runs'][plan_id]['attempts']
+        rows, unavailable, statuses = [], [], []
+        for request in plan['rows']:
+            selected = [a for a in attempts if a['request_hash'] == request['request_hash']]
+            success = next((a for a in selected if a['status'] == 'validated'), None)
+            if success:
+                rows.append(_prediction(read_json(root/success['response_file']),request,index[request['turn_id']]))
+                statuses.append('validated')
+            else:
+                status = selected[-1]['status'] if selected else 'not_attempted'
+                require(status in ('validation_failed','submitted_unknown','usage_unverified','not_attempted'),
+                        'INVALID_ATTEMPT_STATUS')
+                statuses.append(status)
+                unavailable.append(dict(turn_id=request['turn_id'],status=status))
+        return store.put('prediction_snapshot', dict(
+            task=plan['task'], dataset=task['dataset'], rubric=task['rubric'], plan=plan_id,
+            rows=sorted(rows,key=lambda row:row['turn_id']), unavailable=unavailable,
+            status_counts=dict(Counter(statuses)), attempts=attempts,
+            estimated_spend_cny=str(_spend(ledger,plan['config']['budget_id'])),
+            billing_status='estimate_and_unresolved_reserves_not_invoice', network_calls=0,
+            confidence_status='self_reported_uncalibrated',
+            completion='partial' if unavailable else 'complete_snapshot'), [plan_id])
+
+
+def run_plan(store, plan_id, execute=False, allow_network=False, retry_invalid=False, continue_on_invalid=False):
     store.verify_tree(plan_id)
     plan = store.get(plan_id, 'inference_plan')['payload']
     config = validate_config(plan['config'])
@@ -208,7 +247,7 @@ def run_plan(store, plan_id, execute=False, allow_network=False, retry_invalid=F
                for r in ledger['runs'].values() if r['budget_id'] == budget_id for a in r['attempts']):
             return finish('budget_uncertain', error_code='RECONCILE_WITH_PROVIDER_BEFORE_NEW_CALLS')
 
-        predictions = []
+        predictions, failed_turn_ids = [], []
         for row in plan['rows']:
             attempts = [a for a in run['attempts'] if a['request_hash'] == row['request_hash']]
             success = next((a for a in attempts if a['status'] == 'validated'), None)
@@ -218,6 +257,9 @@ def run_plan(store, plan_id, execute=False, allow_network=False, retry_invalid=F
                 continue
             while True:
                 if attempts and (not retry_invalid or len(attempts) >= config['max_attempts']):
+                    if continue_on_invalid:
+                        failed_turn_ids.append(row['turn_id'])
+                        break
                     return finish('validation_failed', error_code='INVALID_PREDICTION')
                 if _spend(ledger, budget_id) + money(row['reserve_cny']) > money(config['budget_cny']):
                     return finish('budget_exhausted', error_code='RESERVATION_EXCEEDS_BUDGET')
@@ -255,12 +297,25 @@ def run_plan(store, plan_id, execute=False, allow_network=False, retry_invalid=F
                     save_ledger(ledger_path, ledger)
                     if retry_invalid and len(attempts) < config['max_attempts']:
                         continue
+                    if continue_on_invalid:
+                        failed_turn_ids.append(row['turn_id'])
+                        break
                     return finish('validation_failed', error_code='INVALID_PREDICTION')
                 attempt.update(status='validated', error_code=None)
                 save_ledger(ledger_path, ledger)
                 predictions.append(prediction)
                 break
         usage = {key:sum(a['usage'][key] for a in run['attempts']) for key in ('input_tokens','output_tokens')}
+        if failed_turn_ids:
+            partial = store.put('partial_predictions', dict(
+                task=plan['task'], dataset=task['dataset'], rubric=task['rubric'], plan=plan_id,
+                rows=sorted(predictions, key=lambda item:item['turn_id']),
+                failed_turn_ids=sorted(failed_turn_ids), usage=usage,
+                attempts=run['attempts'], completion='partial',
+                confidence_status='self_reported_uncalibrated'), [plan_id])
+            return finish('completed_with_failures', partial_predictions=partial,
+                          failed_predictions=len(failed_turn_ids), usage=usage,
+                          independent_quality_status='not_evaluated')
         batch_path = root/plan_id[-24:]/'predictions.json'
         save(batch_path, dict(task_id=plan['task'], predictions=predictions, usage=usage))
         artifact = import_predictions(store, plan['task'], batch_path)

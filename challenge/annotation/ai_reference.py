@@ -47,17 +47,31 @@ def _agreement_summary(pairs):
 
 def compare_ai_reference(store, predictions_id, reference_id):
     for aid in (predictions_id, reference_id): store.verify_tree(aid)
-    predictions = store.get(predictions_id, 'predictions')['payload']
+    prediction_artifact = store.get(predictions_id)
+    require(prediction_artifact['artifact_type'] in ('predictions', 'partial_predictions', 'prediction_snapshot'),
+            'ARTIFACT_TYPE_MISMATCH')
+    predictions = prediction_artifact['payload']
     reference = store.get(reference_id, 'ai_reference')['payload']
     require(all(predictions[key] == reference[key] for key in ('task', 'dataset', 'rubric')),
             'AI_REFERENCE_TASK_MISMATCH')
     index = {row['turn_id']: row for row in predictions['rows']}
-    require(len(index) == len(predictions['rows']) == len(reference['rows']) and
-            set(index) == {row['turn_id'] for row in reference['rows']}, 'AI_REFERENCE_ID_SET_MISMATCH')
+    failed_ids = predictions['failed_turn_ids'] if prediction_artifact['artifact_type'] == 'partial_predictions' else []
+    unavailable = (predictions['unavailable'] if prediction_artifact['artifact_type'] == 'prediction_snapshot'
+                   else [dict(turn_id=tid,status='validation_failed') for tid in failed_ids])
+    require(isinstance(unavailable,list) and all(isinstance(row,dict) and set(row)=={'turn_id','status'}
+            and row['status'] in ('validation_failed','submitted_unknown','usage_unverified','not_attempted')
+            for row in unavailable), 'INVALID_UNAVAILABLE_PREDICTIONS')
+    failed_ids = [row['turn_id'] for row in unavailable]
+    require(isinstance(failed_ids, list) and all(isinstance(tid, str) for tid in failed_ids)
+            and len(set(failed_ids)) == len(failed_ids) and not set(failed_ids).intersection(index)
+            and len(index) == len(predictions['rows'])
+            and set(index).union(failed_ids) == {row['turn_id'] for row in reference['rows']},
+            'AI_REFERENCE_ID_SET_MISMATCH')
     missingness = dict(both_na=0, reference_na_prediction_label=0,
                        reference_label_prediction_na=0, both_labeled=0)
     pairs, disagreements = [], []
     for row in reference['rows']:
+        if row['turn_id'] in failed_ids: continue
         left, right = row['label'], index[row['turn_id']]['label']
         if left is None and right is None: missingness['both_na'] += 1
         elif left is None: missingness['reference_na_prediction_label'] += 1
@@ -76,13 +90,17 @@ def compare_ai_reference(store, predictions_id, reference_id):
     return store.put('ai_reference_comparison', dict(
         predictions=predictions_id, ai_reference=reference_id, task=predictions['task'],
         dataset=predictions['dataset'], rubric=predictions['rubric'],
-        n=len(reference['rows']), paired_n=total, missingness=missingness,
+        n=len(reference['rows']), paired_n=total,
+        failed_predictions=sum(row['status']=='validation_failed' for row in unavailable),
+        unknown_predictions=sum(row['status'] in ('submitted_unknown','usage_unverified') for row in unavailable),
+        unattempted_predictions=sum(row['status']=='not_attempted' for row in unavailable), missingness=missingness,
         six_level=_agreement_summary(pairs),
         three_tier=dict(mapping=[[1,2],[3,4],[5,6]], confusion=tiers,
                         agreement_rate=tier_rate, kappa=tier_kappa),
         disagreements=disagreements, quality_gate_passed=False,
         human_review=False, independent_audit=False, sampling_ci=None,
         limits=['AI-reference agreement is not accuracy against human ground truth.',
+                'Contract failures are counted separately, never converted into model NA labels.',
                 'Both-label denominators exclude NA; missingness is reported separately.',
                 'Development review may be context-exposed; no independent audit is asserted.',
                 'Three-tier high (L5-L6) differs from HOT (L4-L6).',
