@@ -1,0 +1,39 @@
+{
+  "source_root": "",
+  "fall_file": "附件2-2025 年秋季学期脱敏数据/2025秋-数学模型-问答记录导出20260502导出_已标注_已更新.xlsx",
+  "spring_file": "附件3-2026年春季学期脱敏数据/问答记录导出0919_已更新.xlsx",
+  "roster_file": "附件3-2026年春季学期脱敏数据/请大家对本学期线上线下融合授课-参与数据.xlsx",
+  "spring_start_inclusive": "2026-03-01",
+  "spring_end_exclusive": "2026-07-01",
+  "spring_window_confirmed": false,
+  "source_channel": "AI智能体",
+  "seed": 20260925,
+  "reference_distribution": [
+    0.1,
+    0.2,
+    0.25,
+    0.25,
+    0.15,
+    0.05
+  ],
+  "reference_distribution_confirmed": false,
+  "weights": {
+    "priority": [
+      0.5,
+      0.3,
+      0.2
+    ],
+    "balanced": [
+      0.3333333333333333,
+      0.3333333333333333,
+      0.3333333333333333
+    ]
+  },
+  "model": {
+    "provider": null,
+    "name": null,
+    "data_permission_confirmed": false,
+    "remote_calls_enabled": false
+  },
+  "formal_scoring_enabled": false
+}

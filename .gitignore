@@ -15,6 +15,8 @@
 !/tools/prepare_qa_text.py
 !/tools/build_student_mapping.py
 !/tools/error_propagation.py
+!/tools/__init__.py
+!/tools/label_noise.py
 /notes/*
 /reproducibility/
 /papers/
@@ -50,3 +52,36 @@ venv/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Offline workflow state and local machine configuration; never publish research data.
+/.local/
+/local_state/
+/runs/
+/artifacts/
+/workspaces/
+/jobs/
+/synthetic_demo/
+/latest_run.json
+/latest_workflow.json
+/configs/*.local.json
+/.repo_memory/
+/.memorax-code/
+/.firecrawl/
+/outputs/
+/.ci-state/
+.env.*
+!.env.example
+*.csv
+!data/.gitkeep
+*.jsonl
+*.log
+*.key
+*.pem
+*.sqlite*
+*.zip
+
+# Only reviewed method documents are shared, never generated study reports.
+/docs/*
+!/docs/标注手册_v1.md
+!/docs/workflow.md
+!/docs/integration.md
