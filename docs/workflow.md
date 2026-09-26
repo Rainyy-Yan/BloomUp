@@ -67,7 +67,7 @@ quality.local.json参照quality.template.json。真实数据门槛不低于配�
 
 ```text
 python -m challenge labels-freeze --admission ADMISSION_ID --rubric FROZEN_RUBRIC_ID --gold GOLD_ID
-python -m challenge metrics-compute --labels LABELS_ID --spec configs/metrics.v1.json
+python -m challenge metrics-compute --labels LABELS_ID --spec configs/metrics.v2.json
 python -m challenge analysis-observed --metrics METRICS_ID --replicates 1000
 python -m challenge analysis-sensitivity --metrics METRICS_ID
 python -m challenge analysis-label-sensitivity --metrics METRICS_ID --error-masses 0 0.1 0.2 0.3 --seed 2045 --replicates 1000
@@ -75,11 +75,13 @@ python -m challenge analysis-label-sensitivity --metrics METRICS_ID --error-mass
 
 可只用人工金标签；采用模型时，labels-freeze同时指定--predictions和--quality，通过质量门槛才能采用。金标签优先，包括人工NA；未采用者保持缺失。多个不重叠金标签可重复--gold。
 
-HOT=L4—L6在有效标签中的比例，ABL=平均等级；CTQ=有效多轮对话的`0.5+(末轮−首轮)/10`均值；DHI=`1−0.5*sum(abs(p−q))`；默认AIV=`100*(0.5*HOT+0.3*CTQ+0.2*DHI)`。参考分布仍为暂定。
+v2 默认 AIV=`100*(0.5*HOT+0.3*CTQ+0.15*DHI+0.05*MAB)`。HOT=L4—L6在有效标签中的比例，ABL=平均等级（辅助指标）；CTQ为原始多轮对话首末效用净差经`0.5+0.5*净差`映射后的均值；默认等距效用下等于`0.5+(末轮−首轮)/10`。对称DHI=`1−0.5*sum(abs(p−q))/(1−min(q))`；MAB=`log(1+实际使用Agent数)/log(1+冻结目录数)`。非对称DHI、凹合成及证明见[数学规范](aiv-mathematics.md)。
 
-原首末轮缺失则该对话CTQ缺失，不拿内部轮次补位；中间缺失保留覆盖。无CTQ不出AIV单值，只有固定已有HOT/DHI的条件上下界，不是置信区间或所有缺失标签的边界。学生清单中无有效轮次者仍保留缺失，不排名。
+参考分布仍为暂定；真实使用前把模板复制到被忽略的 `configs/metrics.local.json`，填写课程依据、实际冻结目录与状态，并通过 `--spec` 指定。目录未知时MAB缺失；任何目录外Agent会阻断计算。不得以合成演示的目录代替真实可用机会。`metrics.v1.json`继续使用原三指标及未归一化DHI公式，不能直接混比分数。CLI `demo` 默认v2，`demo --formula-version legacy-v1`明确选择旧版。
 
-analysis-observed计算学生等权的首末高阶指示值变化，再按学期内相关组bootstrap，不是AI因果增量。analysis-sensitivity比较8组权重。analysis-label-sensitivity将相邻等级扰动接入同一冻结标签，见[方法说明](integration.md)。各情景保持相同缺失模式。
+原首末轮缺失则该对话CTQ缺失，不拿内部轮次补位；中间缺失保留覆盖。v2任何正权重指标缺失都不出AIV单值，给出固定已观察指标的条件上下界，不重新分配权重；不是置信区间或所有缺失标签的边界。学生清单中无准入轮次者仍保留缺失，不排名。
+
+analysis-observed计算学生等权的首末高阶指示值变化，再按学期内相关组bootstrap，不是AI因果增量。analysis-sensitivity在v2下按学期、共同完整四指标样本比较三种预设方案、主方案及8个权重扰动，报告聚合Spearman相关和分差理论界；旧版仍比较8组权重。analysis-label-sensitivity将相邻等级扰动接入同一冻结标签与指标规范，见[方法说明](integration.md)。各情景保持相同缺失模式。
 
 ## 6. 报告与恢复
 

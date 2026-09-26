@@ -1,0 +1,14 @@
+{
+  "formula_version": "aiv-v2",
+  "reference_distribution": [0.1, 0.2, 0.25, 0.25, 0.15, 0.05],
+  "reference_status": "provisional",
+  "reference_rationale": "Unconfirmed teaching-target candidate; requires course-specific justification and approval before substantive interpretation.",
+  "utilities": [0, 0.2, 0.4, 0.6, 0.8, 1],
+  "dhi_mode": "symmetric",
+  "shortage_penalties": [1, 1, 1, 1, 1, 1],
+  "excess_penalties": [1, 1, 1, 1, 1, 1],
+  "agent_catalog": null,
+  "agent_catalog_status": "unknown",
+  "weights": [0.5, 0.3, 0.15, 0.05],
+  "aggregation": {"kind": "linear"}
+}

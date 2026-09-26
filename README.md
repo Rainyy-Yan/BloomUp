@@ -18,6 +18,8 @@ Windows也可用 `./run_workbench.ps1 demo`，通过 `-PythonPath`指定已有�
 
 完整步骤见 [操作指南](docs/workflow.md)，方法差异见 [整合说明](docs/integration.md)，人工规则见 [标注手册](docs/标注手册_v1.md)。
 
+综合评价现有显式版本 `aiv-v2`：HOT、原始首末净变化 CTQ、归一化对称/非对称 DHI、对数 MAB，支持三种合成方案、权重敏感性与缺失指标条件外界。公式、证明及限制见 [数学规范](docs/aiv-mathematics.md)。CLI 演示默认 v2；旧公式可用 `python -m challenge demo --formula-version legacy-v1` 复算。真实配置模板未填写 Agent 目录，MAB 保持缺失，不自动生成完整 AIV。
+
 ```mermaid
 flowchart LR
     A[授权附件与候选解析] --> B[版本数据与解析准入]
