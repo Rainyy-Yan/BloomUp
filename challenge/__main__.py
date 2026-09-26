@@ -31,7 +31,9 @@ def parser():
         'quality-evaluate':['predictions','gold','policy'], 'labels-freeze':['admission','rubric'],
         'metrics-compute':['labels','spec'], 'analysis-observed':['metrics'], 'analysis-sensitivity':['metrics'],
         'analysis-label-sensitivity':['metrics'],
-        'analysis-causal':[], 'report-build':['metrics'], 'verify':['artifact'], 'status':[], 'demo':[]}
+        'analysis-causal':[], 'causal-panel-import':['file'], 'causal-audit':['panel','protocol'],
+        'causal-report':['analysis'], 'causal-demo':[], 'causal-validate':[], 'causal-run':['file','protocol'],
+        'report-build':['metrics'], 'verify':['artifact'], 'status':[], 'demo':[]}
     for name,keys in definitions.items():
         sub=subs.add_parser(name)
         for key in keys: sub.add_argument('--'+key.replace('_','-'),required=True)
@@ -42,9 +44,11 @@ def parser():
             sub.add_argument('--gold',action='append',default=[])
             sub.add_argument('--predictions')
             sub.add_argument('--quality')
-        if name in ['analysis-observed','analysis-label-sensitivity']:
+        if name=='analysis-causal': sub.add_argument('--audit')
+        if name=='causal-validate': sub.add_argument('--simulations',type=int,default=100)
+        if name in ['analysis-observed','analysis-label-sensitivity','analysis-causal','causal-validate','causal-run']:
             sub.add_argument('--seed',type=int,default=20260925)
-            sub.add_argument('--replicates',type=int,default=1000)
+            sub.add_argument('--replicates',type=int,default=200 if name=='causal-validate' else 1000)
         if name=='analysis-label-sensitivity': sub.add_argument('--error-masses',nargs='+',type=float,default=[0,.1,.2,.3])
         if name=='report-build':
             sub.add_argument('--observed')
@@ -77,7 +81,22 @@ def dispatch(store,a):
     if command=='analysis-observed': return observed_analysis(store,a.metrics,a.seed,a.replicates)
     if command=='analysis-sensitivity': return sensitivity(store,a.metrics)
     if command=='analysis-label-sensitivity': return label_sensitivity(store,a.metrics,a.error_masses,a.seed,a.replicates)
-    if command=='analysis-causal': raise ContractError('CAUSAL_NOT_IDENTIFIED: v1 has no identified causal estimator')
+    if command in ('causal-panel-import','causal-audit','analysis-causal','causal-report'):
+        from .causal import import_panel, audit_panel, estimate_effect, build_causal_report
+        if command=='causal-panel-import': return import_panel(store,read_json(a.file))
+        if command=='causal-audit': return audit_panel(store,a.panel,read_json(a.protocol))
+        if command=='causal-report': return build_causal_report(store,a.analysis)
+        require(a.audit is not None,'CAUSAL_NOT_IDENTIFIED','a frozen causal audit is required')
+        return estimate_effect(store,a.audit,a.seed,a.replicates)
+    if command=='causal-run':
+        from .causal_workflow import run_causal_workflow
+        return run_causal_workflow(store,read_json(a.file),read_json(a.protocol),a.seed,a.replicates)
+    if command=='causal-demo':
+        from .causal_demo import run_causal_demo
+        return run_causal_demo(store)
+    if command=='causal-validate':
+        from .causal_demo import validate_causal_simulation
+        return validate_causal_simulation(store,a.simulations,a.replicates,a.seed)
     if command=='report-build': return build_report(store,a.metrics,a.observed,a.sensitivity,a.label_sensitivity)
     if command=='verify':
         store.verify_tree(a.artifact)
@@ -109,6 +128,9 @@ def main(argv=None):
     try:
         result=dispatch(store,args)
         receipt.update(status='completed',result=result)
+        if args.command=='causal-run' and result['analysis_status']=='blocked':
+            receipt.update(status='blocked',error='CAUSAL_NOT_IDENTIFIED: see audit and report')
+            code=2
     except ContractError as exc:
         receipt.update(status='blocked',error=str(exc))
         code=2

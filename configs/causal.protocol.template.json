@@ -1,0 +1,19 @@
+{
+  "schema_version": "causal-protocol-v1",
+  "term": "REPLACE_TERM",
+  "treatment_contrast": "REPLACE_WITH_VERIFIED_TREATMENT_AND_COMPARISON",
+  "time_zero": "2025-10-01T00:00:00+00:00",
+  "followup_window": ["2025-11-01T00:00:00+00:00", "2025-11-07T00:00:00+00:00"],
+  "outcome": {"name": "REPLACE_WITH_INDEPENDENT_OUTCOME", "lower": 0, "upper": 100, "independent": false, "comparable": false, "higher_is_better": true},
+  "covariates": ["foundation"],
+  "frozen_by": "",
+  "design_evidence": {"assignment": "", "comparison": "", "outcome": "", "covariates": "", "population": ""},
+  "assumptions": {
+    "parallel_trends": {"status": "unverified", "rationale": ""},
+    "no_anticipation": {"status": "unverified", "rationale": ""},
+    "no_interference": {"status": "unverified", "rationale": ""}
+  },
+  "min_clusters_per_arm": 10,
+  "educational_threshold": 3,
+  "trend_bias_bounds": [0, 2, 5]
+}
