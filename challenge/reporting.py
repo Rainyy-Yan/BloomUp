@@ -2,7 +2,6 @@
 
 from collections import defaultdict
 import html
-from pathlib import Path
 import uuid
 
 from .contracts import require
@@ -25,15 +24,19 @@ def build_report(store, metrics_id, observed_id=None, sensitivity_id=None, label
              f"公式版本：{version}；范围状态：{metric['scope_status']}；参考分布状态：{metric['spec']['reference_status']}。", '',
              '分数描述已观察到的提问认知需求，不等同于学习能力、成绩或 AI 带来的提升。', '',
              '## 教师视图：学期汇总', '',
-             '|学期|清单人数|有标签人数|有 AIV 人数|已准入轮次|有效标签轮次|平均 AIV|',
-             '|---|---:|---:|---:|---:|---:|---:|']
+             '|学期|来源清单人数|进入指标清单人数|有标签人数|有 AIV 人数|已准入轮次|有效标签轮次|平均 AIV|',
+             '|---|---:|---:|---:|---:|---:|---:|---:|']
     terms=defaultdict(list)
     for row in metric['rows']: terms[row['term']].append(row)
+    population = metric.get('population_counts', {term:len(rows) for term,rows in terms.items()})
+    for term in population: terms.setdefault(term, [])
     fmt=lambda x:'缺失' if x is None else f'{x:.4f}'
     for term,rows in sorted(terms.items()):
         scores=[r['aiv'] for r in rows if r['aiv'] is not None]
+        total=population.get(term)
         term=str(term).replace('|','/').replace('\n',' ')
-        lines.append(f"|{term}|{len(rows)}|{sum(r['labeled_turns']>0 for r in rows)}|{len(scores)}|{sum(r['candidate_turns'] for r in rows)}|{sum(r['labeled_turns'] for r in rows)}|{fmt(sum(scores)/len(scores) if scores else None)}|")
+        lines.append(f"|{term}|{total if total is not None else '缺失'}|{len(rows)}|{sum(r['labeled_turns']>0 for r in rows)}|{len(scores)}|{sum(r['candidate_turns'] for r in rows)}|{sum(r['labeled_turns'] for r in rows)}|{fmt(sum(scores)/len(scores) if scores else None)}|")
+    lines += ['', '来源清单人数保留原范围分母；新导入仅为有候选记录的学生建立指标条目，无候选记录者仅计入学期总人数。旧产物未提供独立总人数时沿用其原清单人数。']
     lines += ['', '## 学生视图：指标的解释边界', '',
               'HOT 是已标注提问中高阶需求的比例；CTQ 使用原始对话首末轮；DHI 是分布与指定课程参考分布的接近程度。', '',
               '本汇总不展示个人诊断。缺失有权重的指标时只给条件上下界；该范围固定已有指标，不覆盖全部缺失标签，也不是置信区间。', '',
@@ -66,8 +69,10 @@ def build_report(store, metrics_id, observed_id=None, sensitivity_id=None, label
                     term = str(r['term']).replace('|','/').replace('\n',' ')
                     lines.append(f"|{term}|{r['left']}/{r['right']}|{r['students']}|{fmt(r['spearman'])}|")
             else:
-                lines += ['', '## 权重敏感性', '', '固定同一批可计算 AIV 的学生，仅改变权重；不解释为标注误差区间。', '', '|场景|人数|平均 AIV|','|---|---:|---:|']
-                lines += [f"|{r['scenario']}|{r['students']}|{fmt(r['mean_aiv'])}|" for r in payload['rows']]
+                lines += ['', '## 权重敏感性', '', '每学期固定可计算 AIV 的学生，仅改变权重；不解释为标注误差区间。历史产物若未记录学期，明确标记为旧版未分学期。', '', '|学期|场景|人数|平均 AIV|','|---|---|---:|---:|']
+                for r in payload['rows']:
+                    term = str(r.get('term', '旧版未分学期')).replace('|','/').replace('\n',' ')
+                    lines.append(f"|{term}|{r['scenario']}|{r['students']}|{fmt(r['mean_aiv'])}|")
         else:
             lines += ['', '## 假设性标注扰动与重抽样', '',
                       '以下错误概率为预设情景，不是实测模型错误率或人工混淆矩阵。区间为模拟分位数，不是因果置信区间。', '',

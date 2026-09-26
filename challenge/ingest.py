@@ -12,7 +12,7 @@ def register_run(store, run_path):
     manifest = read_json(run/'generated_manifest.json')
     hashes = {x['path']: x['sha256'] for x in manifest}
     needed = ['private/turns.jsonl', 'private/records.jsonl', 'private/sampling_design.json',
-              'config_snapshot.json', 'source_manifest.csv', 'student_inventory_NOT_SCORED.csv', 'annotations/parse_review.csv']
+              'config_snapshot.json', 'source_manifest.csv', 'readiness.json', 'annotations/parse_review.csv']
     for name in needed:
         require(name in hashes and file_hash(run/name) == hashes[name], 'PREPARED_INPUT_CHANGED', name)
     def lines(name):
@@ -28,9 +28,21 @@ def register_run(store, run_path):
         with (run/name).open(encoding='utf-8-sig', newline='') as stream:
             return list(csv.DictReader(stream))
     config = read_json(run/'config_snapshot.json')
+    readiness = read_json(run/'readiness.json')
+    # Older prepared runs already contain these aggregate counts; no CSV identities are needed.
+    population = readiness.get('population_counts')
+    if population is None:
+        population = {'fall': readiness['fall']['unique_ids'], 'spring': readiness['spring_roster_size']}
+    require(isinstance(population, dict) and set(population) == {'fall', 'spring'}
+            and all(type(n) is int and n >= 0 for n in population.values()), 'INVALID_POPULATION_COUNTS')
+    inventory = [{'term': term, 'student_key': student}
+                 for term, student in sorted({(r['term'], r['student_key']) for r in records})]
+    require(all(r['term'] in population for r in inventory), 'INVALID_POPULATION_TERM')
+    require(all(sum(r['term'] == term for r in inventory) <= n for term, n in population.items()),
+            'POPULATION_COUNT_BELOW_RECORDS')
     payload = {'turns': turns, 'records': [{k:v for k,v in x.items() if k != 'raw_text'} for x in records],
                'sampling': read_json(run/'private/sampling_design.json'),
-               'inventory': read_csv('student_inventory_NOT_SCORED.csv'),
+               'inventory': inventory, 'population_counts': population,
                'source_manifest': read_csv('source_manifest.csv'), 'preparation_run': run.name,
                'required_parse_sample': [x['record_id'] for x in read_csv('annotations/parse_review.csv')],
                'scope_status': 'provisional', 'synthetic': False,

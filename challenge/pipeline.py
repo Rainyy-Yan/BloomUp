@@ -219,7 +219,7 @@ def prepare(project_root=ROOT, config_path=None):
     write_jsonl(run/'private/turns.jsonl', turns)
     write_json(run/'private/sampling_design.json', splits)
     by_id = {x['turn_id']: x for x in turns}
-    fields = ['turn_id', 'term', 'record_id', 'student_key', 'turn_index', 'question', 'prior_context',
+    fields = ['turn_id', 'term', 'record_id', 'turn_index', 'question', 'prior_context',
               'bloom_level', 'evidence_quote', 'outsourcing', 'insufficient_evidence',
               'confidence_1_to_5', 'reviewer_id', 'reviewed_at', 'notes']
     for pool, ids in splits['selected'].items():
@@ -238,17 +238,6 @@ def prepare(project_root=ROOT, config_path=None):
     write_csv(run/'annotations/parse_review.csv', review_rows,
               ['record_id', 'term', 'source_file', 'source_row', 'parse_status', 'parse_reason',
                'candidate_turn_count', 'raw_text', 'roles_correct', 'reviewer_id', 'notes'])
-    students = []
-    for term, values in [('fall', {identity(x['学号']) for x in usage}), ('spring', roster_ids)]:
-        for value in sorted(values):
-            sid = pseudonym(key, term, value)
-            selected = [x for x in records if x['student_key'] == sid]
-            own_turns = [x for x in turns if x['student_key'] == sid]
-            students.append({'term': term, 'student_key': sid, 'candidate_records': len(selected),
-                             'candidate_turns': len(own_turns), 'labeled_turns': 0,
-                             'score_status': 'awaiting_annotation' if own_turns else 'no_usable_text',
-                             'abl': None, 'hot': None, 'ctq': None, 'dhi': None, 'aiv': None, 'rank': None})
-    write_csv(run/'student_inventory_NOT_SCORED.csv', students, list(students[0]))
     summary = {
         'state': 'PREPARATION_READY_NOT_EVALUATED', 'run_id': run_id, 'created_utc': now.isoformat(),
         'source_files': len(manifest), 'source_hashes_verified': True, 'fall_usage_mismatches': mismatches,
@@ -257,6 +246,7 @@ def prepare(project_root=ROOT, config_path=None):
         'spring_export': {'raw_records': len(spring), 'unique_ids': len({identity(x['学号']) for x in spring}),
                           'time_min': min(x['_time'] for x in spring), 'time_max': max(x['_time'] for x in spring)},
         'spring_roster_size': len(roster_ids), 'spring_exclusion_first_reason': dict(exclusions),
+        'population_counts': {'fall': len({identity(x['学号']) for x in usage}), 'spring': len(roster_ids)},
         'selected_records': len(records), 'candidate_turns': len(turns),
         'by_term': {term: {'records': sum(x['term'] == term for x in records),
                           'parse_status': dict(Counter(x['parse_status'] for x in records if x['term'] == term)),
@@ -273,24 +263,24 @@ def prepare(project_root=ROOT, config_path=None):
     }
     summary['runtime_packages'] = {name: importlib.metadata.version(name) for name in ['openpyxl', 'et-xmlfile']}
     write_json(run/'readiness.json', summary)
-    code_files = [p for sub in ['challenge', 'tests', 'configs'] for p in (project_root/sub).rglob('*')
-                  if p.is_file() and '__pycache__' not in p.parts]
-    code_files += [p for name in ['run_all.ps1', 'run_all.sh', 'requirements.lock.txt']
-                   if (p := project_root/name).is_file()]
-    write_json(run/'code_manifest.json', [{'path': p.relative_to(project_root).as_posix(), 'sha256': digest(p)}
+    code_files = [p for sub in ['challenge', 'tests', 'tools'] for p in (ROOT/sub).rglob('*.py')
+                  if '__pycache__' not in p.parts]
+    code_files += [p for name in ['run_workbench.ps1', 'run_workbench.sh', 'requirements.txt']
+                   if (p := ROOT/name).is_file()]
+    write_json(run/'code_manifest.json', [{'path': p.relative_to(ROOT).as_posix(), 'sha256': digest(p)}
                                          for p in sorted(code_files)])
     report = [f'# 准备运行回执：{run_id}', '', '状态：准备完成，尚未进行正式标注或效果评价。', '',
               f'- 源资料：{len(manifest)}个文件，已记录SHA-256；秋季次数表对账差异{mismatches}。',
               f'- 主口径候选：{len(records)}条记录、{len(turns)}个提问轮次。',
               f'- 人工样本：{summary["sampling_counts"]}。',
               '- 每次运行新建目录，不覆盖已填写标注表。身份键保存在工程.local目录，勿删除或公开。',
-              '- CSV中的模型/人工标签未填写；学生表所有分数留空。',
+              '- CSV中的模型/人工标签未填写；不导出学生键或学生级清单，来源清单人数仅按学期汇总。',
               '- 春季日期、角色解析和标注质量仍待确认，当前不能用于正式论文结论。', '',
               '## 立即可做', '',
               '1. 依据docs/标注手册_v1.md填写annotations/parse_review.csv，检查角色与多轮边界。',
               '2. 两名标注者分别填写development_rater_A/B.csv，不互看标签。',
               '3. 第三人用development_adjudication.csv裁决，冻结规则后再打开audit表。',
-              '4. 数据负责人核对docs/待主办方核实清单.md；本工程没有代发消息。', '',
+              '4. 依据docs/workflow.md核实日期、渠道和范围，未核实事项见readiness.json的unresolved；本工程没有代发消息。', '',
               '## 数据范围', '', '```json', json.dumps(summary['by_term'], ensure_ascii=False, indent=2), '```', '']
     (run/'准备回执.md').write_text('\n'.join(report), encoding='utf-8')
     generated = [{'path': p.relative_to(run).as_posix(), 'sha256': digest(p)} for p in sorted(run.rglob('*')) if p.is_file()]

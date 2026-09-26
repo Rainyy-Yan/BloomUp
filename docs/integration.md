@@ -8,6 +8,8 @@ prepare_qa_text.py仍按原规则构造记录级question_text、qid及固定数�
 
 共享函数抽出后增加参数检查。正常输入的数值兼容性使用固定随机种子的合成四学生样本对照原算法验证；没有在本次整合中运行真实人工标签或复算论文结果。包内导入和直接脚本调用均可用。
 
+评分入口收敛到`challenge.metrics.calculate_students()`，依据明确版本调用legacy-v1或aiv-v2。两者共用基础观察统计和原始首末轮处理，各自只计算一次版本公式。已移除仅被测试调用的`challenge.core.metrics()`和`challenge.core.asymmetric_dhi()`：旧版学生评分仍可调用`student_metrics()`；归一化DHI使用`scoring.normalized_dhi()`。这些接口输入和返回值不同，仓外直接导入旧core函数的代码需要迁移，不能机械替换函数名。
+
 ## 不直接合并的研究对象
 
 | 维度 | 原有脚本 | 新流水线 |

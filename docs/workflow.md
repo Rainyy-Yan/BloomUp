@@ -17,6 +17,8 @@ python -m challenge parse-template --dataset DATASET_ID
 
 RUN_ID从latest_run.json读取，大写ID均用上一步返回值替换。run须与生成清单的SHA-256一致。人工工作在导出的workspaces进行，固定run与原文件保持只读。不得删除.local身份键或baseline来绕过来源变化检查。
 
+准备阶段不再导出含student_key的标注CSV或学生清单CSV。学生关联只保存在受控候选记录及内部产物中；readiness.json记录各学期来源清单总人数，dataset-import校验其哈希后保留聚合分母。无候选记录者不建立个人指标条目，也不伪造零分。旧准备目录继续从已校验的readiness.json读取原人数，不再依赖学生清单CSV；旧文件不会被自动删除。code_manifest.json记录实际运行源码和依赖文件，实际配置在config_snapshot.json单独保存。
+
 ## 2. 解析准入
 
 对照固定run的private/records.jsonl，实际核对后填写解析模板的reviewer_id与record_decisions：每条含record_id、status=accepted/rejected、reason。
@@ -59,7 +61,7 @@ model.local.json参照model.template.json填写实际名称、版本与参数。
 
 响应外层为 `{"task_id":"...","predictions":[...],"usage":null}`。每条预测遵守prompts/label.schema.json，所有请求ID恰好一次；证据属于当前提问。usage如已知可填input_tokens/output_tokens非负整数，未知保持null。
 
-quality.local.json参照quality.template.json。真实数据门槛不低于配对数30、预测覆盖0.9、设计加权线性Kappa 0.6；audit_unseen、attested_by须由实际负责人按真实情况填写。这是操作门槛，不是官方标准或统计保障。宏F1平均固定六类，未支持类记0；保留混淆矩阵、NA计数。当前没有复杂抽样方差/Kappa置信下界。
+quality.local.json参照quality.template.json。模板的min_n、min_coverage、min_linear_kappa默认为null；填写实际attested_by后可以先计算实测指标，任一准则未确认都阻止模型标签采用。负责人应根据研究方案明确填写配对数、预测覆盖、设计加权线性Kappa准则，并如实填写audit_unseen。程序不再预设30/0.9/0.6底线；这些是用户确认的操作准则，不是官方标准或统计保障。宏F1平均固定六类，未支持类记0；保留混淆矩阵、NA计数。当前没有复杂抽样方差/Kappa置信下界。
 
 质量始终评估原预测；人工修正只影响随后采用标签，不反写模型成绩。
 
@@ -79,9 +81,9 @@ v2 默认 AIV=`100*(0.5*HOT+0.3*CTQ+0.15*DHI+0.05*MAB)`。HOT=L4—L6在有效�
 
 参考分布仍为暂定；真实使用前把模板复制到被忽略的 `configs/metrics.local.json`，填写课程依据、实际冻结目录与状态，并通过 `--spec` 指定。目录未知时MAB缺失；任何目录外Agent会阻断计算。不得以合成演示的目录代替真实可用机会。`metrics.v1.json`继续使用原三指标及未归一化DHI公式，不能直接混比分数。CLI `demo` 默认v2，`demo --formula-version legacy-v1`明确选择旧版。
 
-原首末轮缺失则该对话CTQ缺失，不拿内部轮次补位；中间缺失保留覆盖。v2任何正权重指标缺失都不出AIV单值，给出固定已观察指标的条件上下界，不重新分配权重；不是置信区间或所有缺失标签的边界。学生清单中无准入轮次者仍保留缺失，不排名。
+原首末轮缺失则该对话CTQ缺失，不拿内部轮次补位；中间缺失保留覆盖。v2任何正权重指标缺失都不出AIV单值，给出固定已观察指标的条件上下界，不重新分配权重；不是置信区间或所有缺失标签的边界。有候选记录但无准入轮次者仍保留缺失，不排名。来源名单中完全没有候选记录者仅计入学期总人数；报告分开列出来源清单人数和进入指标清单人数，不能混用分母。
 
-analysis-observed计算学生等权的首末高阶指示值变化，再按学期内相关组bootstrap，不是AI因果增量。analysis-sensitivity在v2下按学期、共同完整四指标样本比较三种预设方案、主方案及8个权重扰动，报告聚合Spearman相关和分差理论界；旧版仍比较8组权重。analysis-label-sensitivity将相邻等级扰动接入同一冻结标签与指标规范，见[方法说明](integration.md)。各情景保持相同缺失模式。
+analysis-observed计算学生等权的首末高阶指示值变化，再按学期内相关组bootstrap，不是AI因果增量。analysis-sensitivity在v2下按学期、共同完整四指标样本比较三种预设方案、主方案及8个权重扰动，报告聚合Spearman相关和分差理论界；旧版按学期比较8组权重，没有可计算分数的学期保留人数0和缺失均值。旧敏感性产物没有学期字段时，报告标记“旧版未分学期”，不重新解释历史结果。analysis-label-sensitivity将相邻等级扰动接入同一冻结标签与指标规范，见[方法说明](integration.md)。各情景保持相同缺失模式。
 
 ## 6. 报告与恢复
 

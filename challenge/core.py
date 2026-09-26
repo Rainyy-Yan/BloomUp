@@ -1,6 +1,6 @@
 """Pure, offline dialogue parsing, metric definitions and sample isolation."""
 
-from collections import Counter, defaultdict
+from collections import defaultdict
 import hashlib
 import html
 import math
@@ -58,46 +58,6 @@ def _simplex(values, length):
                                    or not math.isfinite(v) or v < 0 for v in values)
             or not math.isclose(sum(values), 1, abs_tol=1e-9)):
         raise ValueError(f'Expected {length} finite, nonnegative values summing to one')
-
-
-def metrics(labels, conversations, reference, weights):
-    """Compute the proposed metrics for complete integer labels, not estimates of causality."""
-    _simplex(reference, 6)
-    _simplex(weights, 3)
-    flattened = [x for conv in conversations for x in conv]
-    if any(type(x) is not int or not 1 <= x <= 6 for x in labels + flattened):
-        raise ValueError('Labels must be integers in 1..6; missing is not level 1')
-    if Counter(labels) != Counter(flattened):
-        raise ValueError('Conversation labels must reconcile with student labels')
-    result = dict.fromkeys(['abl', 'hot', 'ctq', 'dhi', 'aiv', 'aiv_lower', 'aiv_upper'])
-    if not labels:
-        return result
-    p = [labels.count(i) / len(labels) for i in range(1, 7)]
-    result.update(abl=sum(labels)/len(labels), hot=sum(p[3:]),
-                  dhi=1-sum(abs(a-b) for a, b in zip(p, reference))/2)
-    ctqs = [0.5+(c[-1]-c[0])/10 for c in conversations if len(c) >= 2]
-    known = 100*(weights[0]*result['hot'] + weights[2]*result['dhi'])
-    if ctqs:
-        result['ctq'] = sum(ctqs)/len(ctqs)
-        result['aiv'] = known+100*weights[1]*result['ctq']
-        result['aiv_lower'] = result['aiv_upper'] = result['aiv']
-    else:
-        result['aiv_lower'], result['aiv_upper'] = known, known+100*weights[1]
-    return result
-
-
-def asymmetric_dhi(distribution, reference, shortage, excess):
-    _simplex(distribution, 6)
-    _simplex(reference, 6)
-    if any(len(v) != 6 for v in [shortage, excess]) or any(
-            isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(x) or x <= 0
-            for x in shortage+excess):
-        raise ValueError('Penalty weights must be six strictly positive finite values')
-    def distance(p):
-        return sum(a*max(q-x, 0)+b*max(x-q, 0)
-                   for x, q, a, b in zip(p, reference, shortage, excess))
-    maximum = max(distance([int(i == j) for i in range(6)]) for j in range(6))
-    return max(0.0, min(1.0, 1-distance(distribution)/maximum))
 
 
 def make_splits(turns, seed=20260925):

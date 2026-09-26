@@ -13,7 +13,7 @@ from challenge.demo import synthetic_dataset, fill_synthetic_review, run_demo
 from challenge.annotation.reviews import register_rubric, create_task, import_review, adjudicate, IMMUTABLE, EDITABLE
 from challenge.annotation.predictions import export_request, import_predictions
 from challenge.ingest import admit_dataset
-from challenge.analysis import freeze_labels, compute_metrics
+from challenge.analysis import freeze_labels, compute_metrics, sensitivity
 from challenge.evaluation import agreement, evaluate_quality
 from challenge.pipeline import write_json, write_csv
 
@@ -159,6 +159,52 @@ class EndToEndTests(unittest.TestCase):
         self.assertEqual(observed['sampling_ci_95'],[1,1])
         self.assertEqual(len(self.store.get(self.result['sensitivity'])['payload']['rows']),8)
         self.assertTrue(all(r['rank'] is None for r in self.store.get(self.result['metrics'])['payload']['rows']))
+
+    def test_unconfirmed_quality_reports_metrics_but_blocks_adoption(self):
+        policy={'min_n':None,'min_coverage':None,'min_linear_kappa':None,
+                'audit_unseen':True,'attested_by':'SYNTHETIC'}
+        for key in (None, 'min_n', 'min_coverage', 'min_linear_kappa'):
+            partial = dict(policy) if key is None else dict(min_n=2, min_coverage=1, min_linear_kappa=.6,
+                                                           audit_unseen=True, attested_by='SYNTHETIC')
+            if key: partial[key] = None
+            quality=evaluate_quality(self.store,self.result['predictions'],self.result['gold'],partial)
+            value=self.store.get(quality)['payload']
+            self.assertEqual(value['paired_n'],12)
+            self.assertIsNotNone(value['design_weighted']['linear_kappa'])
+            self.assertIn('quality_criteria_not_confirmed',value['blocked_reasons'])
+            self.assertFalse(value['passed'])
+            with self.assertRaisesRegex(ContractError,'MODEL_QUALITY_BLOCKED'):
+                freeze_labels(self.store,self.result['admission'],self.result['rubric'],[],self.result['predictions'],quality)
+
+    def test_explicit_quality_policy_has_no_hardcoded_real_data_floor(self):
+        # Only fabricate the non-synthetic policy route; no actual student data is read.
+        original=self.store.get(self.result['predictions'])['payload']
+        data=self.store.get(original['dataset'])['payload']
+        dataset=self.store.put('dataset',dict(data,synthetic=False))
+        pred=self.store.put('predictions',dict(original,dataset=dataset),[dataset])
+        gold=self.store.put('gold',dict(self.store.get(self.result['gold'])['payload'],dataset=dataset),[dataset])
+        policy=dict(min_n=2,min_coverage=.8,min_linear_kappa=.5,audit_unseen=True,attested_by='SYNTHETIC TEST')
+        quality=evaluate_quality(self.store,pred,gold,policy)
+        self.assertTrue(self.store.get(quality)['payload']['passed'])
+        policy['min_n']=100
+        rejected=self.store.get(evaluate_quality(self.store,pred,gold,policy))['payload']
+        self.assertIn('insufficient_pairs',rejected['blocked_reasons'])
+
+    def test_legacy_sensitivity_separates_terms_including_empty_scores(self):
+        original=self.store.get(self.result['metrics'])['payload']
+        base=dict(next(r for r in original['rows'] if r['aiv'] is not None))
+        rows=[dict(base,term='fall',hot=0,ctq=0,dhi=0,aiv=0),
+              dict(base,term='spring',hot=1,ctq=1,dhi=1,aiv=100),
+              dict(base,term='empty',hot=None,ctq=None,dhi=None,aiv=None)]
+        metric=self.store.put('metrics',dict(original,rows=rows,population_counts={'fall':1,'spring':1,'empty':1}),
+                              [self.result['labels']],original['spec'])
+        result=self.store.get(sensitivity(self.store,metric))['payload']['rows']
+        primary={r['term']:r for r in result if r['scenario']=='primary'}
+        self.assertEqual(set(primary),{'fall','spring','empty'})
+        self.assertEqual(primary['fall']['mean_aiv'],0)
+        self.assertEqual(primary['spring']['mean_aiv'],100)
+        self.assertEqual(primary['empty']['students'],0)
+        self.assertIsNone(primary['empty']['mean_aiv'])
 
 
 class FormulaAndCliTests(unittest.TestCase):
